@@ -1,6 +1,6 @@
 {
     "manifest_version": 3,
-    "name": "Antigravity Chess Bot",
+    "name": "ChessBot",
     "version": "1.0",
     "description": "Chess bot for chess.com using Stockfish 17 API",
     "permissions": [

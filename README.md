@@ -1,8 +1,8 @@
-# Antigravity Chess Bot
+# ChessBot
 
-![Antigravity Chess Bot Screenshot](screenshot.png)
+![ChessBot Screenshot](screenshot.png)
 
-Antigravity Chess Bot is a powerful Chrome Extension designed for **Chess.com**. It integrates advanced engine analysis directly into your browser, allowing you to observe, analyze, and learn from top-tier chess engines in real-time.
+ChessBot is a powerful Chrome Extension designed for **Chess.com**. It integrates advanced engine analysis directly into your browser, allowing you to observe, analyze, and learn from top-tier chess engines in real-time.
 
 ## 🚀 Purpose & Vision
 
@@ -34,7 +34,7 @@ The primary goal of this extension is **education through observation**.
 ## ⚙️ How to Use
 
 1.  Navigate to any game or analysis page on [Chess.com](https://www.chess.com/play/computer).
-2.  The **Antigravity** panel will appear on the screen.
+2.  The **ChessBot** panel will appear on the screen.
 3.  Click **START** to begin board detection and analysis.
 4.  Toggle **AUTO PLAY** if you want the bot to make moves automatically (ideal for engine-vs-bot matches).
 5.  Use the **Advanced Settings** (gear/arrow icon) to switch engines or adjust depth/delays.

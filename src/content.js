@@ -44,7 +44,7 @@ function createOverlay() {
   }
   panel.innerHTML = `
         <div class="bot-panel-header">
-            <h3>ANTIGRAVITY CHESS BOT</h3>
+            <h3>CHESSBOT</h3>
         </div>
         <div class="bot-controls-row">
             <button id="bot-panel-start" class="bot-panel-btn">START</button>
