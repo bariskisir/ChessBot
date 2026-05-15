@@ -25,11 +25,12 @@ The primary goal of this extension is **education through observation**.
 
 ## 🛠️ Installation
 
-1.  **Download & Extract**: Download or clone this repository to your local machine.
-2.  **Chrome Extensions**: Open Google Chrome and navigate to `chrome://extensions`.
-3.  **Developer Mode**: Toggle the **Developer mode** switch in the top right corner.
-4.  **Load Unpacked**: Click the **Load unpacked** button.
-5.  **Select Folder**: Navigate to your project directory and select the `src` folder (the folder containing `manifest.json`).
+1. Download the latest release: https://github.com/bariskisir/ChessBot/releases/latest/download/dist.zip
+2. Unzip the archive.
+3. Open `chrome://extensions`.
+4. Enable **Developer mode**.
+5. Click **Load unpacked**.
+6. Select the extracted `dist` folder.
 
 ## ⚙️ How to Use
 

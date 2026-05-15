@@ -1,0 +1,20 @@
+{
+  "name": "chessbot",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Chess.com bot-analysis Chrome extension built with TypeScript.",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc --noEmit",
+    "clean": "node scripts/clean.mjs"
+  },
+  "dependencies": {
+    "chess.js": "1.4.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.1.42",
+    "esbuild": "0.28.0",
+    "typescript": "6.0.3"
+  }
+}
