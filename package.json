@@ -1,20 +1,30 @@
 {
   "name": "chessbot",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Chess.com bot-analysis Chrome extension built with TypeScript.",
+  "description": "Chess.com analysis overlay built with React, TypeScript, SCSS and local Stockfish 18.",
   "type": "module",
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "check": "tsc --noEmit",
-    "clean": "node scripts/clean.mjs"
+    "icons": "tsx scripts/icons.ts",
+    "build": "tsx scripts/build.ts",
+    "check": "tsc --noEmit && tsx scripts/check-comments.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "test:browser": "tsx scripts/browser-test.ts"
   },
   "dependencies": {
-    "chess.js": "1.4.0"
+    "chess.js": "1.4.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/chrome": "0.1.42",
+    "@types/node": "^26.5.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "esbuild": "0.28.1",
+    "sass": "^1.104.1",
+    "tsx": "^4.23.13",
     "typescript": "6.0.3"
   }
 }

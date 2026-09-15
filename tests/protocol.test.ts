@@ -1,0 +1,39 @@
+/** Tests defensive settings and UCI score handling at engine boundaries. */
+import assert from "node:assert/strict";
+import test from "node:test";
+import { Chess } from "chess.js";
+import { DEFAULT_SETTINGS, normalizeSettings, parseInfo } from "../src/shared";
+
+/** Ensures corrupt and obsolete settings cannot select a remote engine. */
+function settingsValidation(): void {
+  assert.deepEqual(normalizeSettings(null), DEFAULT_SETTINGS);
+  assert.deepEqual(normalizeSettings({ depth: Infinity, time: -2, lines: 99, autoPlayDelay: NaN, autoPlay: "true", engineType: "api" }), { ...DEFAULT_SETTINGS, lines: 3 });
+  const restored = normalizeSettings({ autoPlay: false, autoNewMatch: true, autoRematch: true, autoPlayDelay: 10000, mistakeProbability: 90, panelPos: { top: "82px", left: "330px" } });
+  assert.equal(restored.autoPlay, false);
+  assert.equal(restored.autoNewMatch, true);
+  assert.equal(restored.autoRematch, true);
+  assert.equal(restored.autoPlayDelay, 10000);
+  assert.equal(restored.mistakeProbability, 90);
+  assert.deepEqual(restored.panelPos, { top: "82px", left: "330px" });
+}
+test("settings reject corrupt values and remove legacy engine selection", settingsValidation);
+
+/** Confirms centipawn and mate scores remain White-relative on Black's turn. */
+function scores(): void {
+  const game = new Chess();
+  game.move("e4");
+  const parsed = parseInfo("info depth 15 multipv 2 score cp 75 nodes 42000 pv e7e5 g1f3", game.fen());
+  assert.equal(parsed?.variation.score, -0.75);
+  assert.equal(parsed?.index, 1);
+  assert.equal(parsed?.variation.nodes, 42000);
+  assert.deepEqual(parsed?.variation.moves, ["e7e5", "g1f3"]);
+  assert.equal(parseInfo("info depth 20 score mate -3 pv e7e5", game.fen())?.variation.mate, 3);
+}
+test("UCI scores and mates are normalized to White", scores);
+
+/** Rejects partial or bound-only evaluations that are not exact principal variations. */
+function partialLines(): void {
+  assert.equal(parseInfo("info depth 1 nodes 12", new Chess().fen()), null);
+  assert.equal(parseInfo("info score cp 100 lowerbound pv e2e4", new Chess().fen()), null);
+}
+test("partial and bounded UCI output does not replace an exact line", partialLines);

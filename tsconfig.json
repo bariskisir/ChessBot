@@ -10,8 +10,9 @@
     "skipLibCheck": true,
     "allowJs": false,
     "resolveJsonModule": true,
-    "types": ["chrome"],
+    "types": ["chrome", "node"],
+    "jsx": "react-jsx",
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "scripts/**/*.mjs"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts", "tests/**/*.ts"]
 }
