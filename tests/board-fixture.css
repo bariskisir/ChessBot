@@ -1,0 +1,57 @@
+/* Presentation for the deterministic test board; the fixture mock declares no styles. */
+body {
+  background: #302e2b;
+  color: #ddd;
+  font: 14px Arial;
+}
+
+wc-chess-board {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  position: relative;
+  width: 560px;
+  height: 560px;
+  margin: 32px;
+}
+
+.fixture-cell.light {
+  background: #eeeed2;
+}
+
+.fixture-cell.dark {
+  background: #769656;
+}
+
+.fixture-cell .piece {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font: 56px "Segoe UI Symbol";
+  text-shadow: 0 1px 2px #000;
+}
+
+.fixture-cell .piece.pw {
+  color: #fff;
+}
+
+.fixture-cell .piece.pb {
+  color: #222;
+}
+
+.promotion-window {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 70px;
+  background: #fff;
+  z-index: 20;
+}
+
+.promotion-piece {
+  height: 60px;
+  color: #000;
+  font-size: 40px;
+  cursor: pointer;
+}

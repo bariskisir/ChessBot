@@ -37,7 +37,7 @@ function onEngineMessage(event: MessageEvent<string>): void {
     worker!.postMessage(`go depth ${depth}${time > 0 ? ` movetime ${time}` : ""}`);
   } else if (line.startsWith("info ")) {
     const parsed = parseInfo(line, active.request.fen);
-    if (parsed && parsed.index >= 0 && parsed.index < 3) variations[parsed.index] = parsed.variation;
+    if (parsed && parsed.index >= 0 && parsed.index < active.request.settings.lines) variations[parsed.index] = parsed.variation;
   } else if (line.startsWith("bestmove ")) {
     finish({ result: { fen: active.request.fen, bestMove: line.split(" ")[1] ?? "(none)", variations: variations.filter(Boolean) } });
   }

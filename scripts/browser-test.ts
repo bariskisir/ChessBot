@@ -134,7 +134,7 @@ async function verifyEvaluationUpdates(page: Page): Promise<void> {
   }
 }
 
-const fixture = await build({ entryPoints: ["tests/board-fixture.ts"], bundle: true, write: false, format: "iife", target: "chrome120" });
+const fixture = await build({ entryPoints: ["tests/board-fixture.ts"], bundle: true, write: false, format: "iife", target: "chrome120", loader: { ".css": "text" } });
 const fixtureScript = fixture.outputFiles[0]!.text;
 const profile = await mkdtemp(resolve(tmpdir(), "chessbot-parity-"));
 const extension = resolve("dist");
@@ -162,11 +162,12 @@ try {
   await page.getByRole("button", { name: "Toggle Settings" }).click();
   await expect(page.locator("#bot-engine-select")).toHaveCount(0);
   await expect(page.locator("#bot-fen-text")).toHaveCount(0);
-  for (const name of ["AUTO PLAY", "AUTO NEW MATCH", "AUTO REMATCH", "ANALYZE OPPONENT"]) await expect(page.getByLabel(name, { exact: true })).toBeVisible();
+  for (const name of ["AUTO PLAY", "AUTO NEW MATCH", "AUTO REMATCH", "ANALYZE OPPONENT", "AVERAGE MOVE"]) await expect(page.getByLabel(name, { exact: true })).toBeVisible();
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveAttribute("max", "10");
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveAttribute("step", "0.1");
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toBeDisabled();
   await expect(page.getByLabel("MISTAKE", { exact: true })).toHaveAttribute("max", "100");
+  await expect(page.getByLabel("VARIATIONS", { exact: true })).toHaveAttribute("max", "10");
   await expect(page.getByLabel("DEPTH", { exact: true })).toHaveValue("6");
   await page.getByRole("button", { name: "START", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Analyzing Board", { timeout: 25000 });

@@ -1,0 +1,11 @@
+/* Scaffolding for transparent icon screenshots; keeps the raster markup free of styles. */
+html, body {
+  margin: 0;
+  background: transparent;
+}
+
+svg {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}

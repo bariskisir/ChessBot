@@ -1,0 +1,100 @@
+/* Floating panel frame, drag position variables, header, and transport controls. */
+@use "tokens" as *;
+
+#bot-overlay-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 60px;
+  gap: 8px;
+  box-sizing: content-box;
+  position: fixed;
+  top: clamp(0px, var(--bot-top, 10px), calc(100vh - 50px));
+  right: var(--bot-right, 10px);
+  left: auto;
+  width: 220px;
+  max-width: calc(100vw - 50px);
+  max-height: calc(100vh - 46px);
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: $surface;
+  box-shadow: 0 6px 20px #0004;
+  color: $text;
+  font: 12px/1.5 "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  text-align: center;
+  scrollbar-width: thin;
+  scrollbar-color: #485541 transparent;
+  z-index: 2147483647;
+
+  &[data-anchored="left"] {
+    left: clamp(0px, var(--bot-left), max(0px, calc(100vw - 242px)));
+  }
+}
+
+.bot-panel-header {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+
+  &:active { cursor: grabbing; }
+
+  h3 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    color: $text;
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: .25px;
+
+    img { display: block; opacity: .95; }
+    .bot-version { color: $muted; font-size: 8px; font-weight: 400; letter-spacing: 0; }
+
+  }
+
+}
+
+.bot-controls-row {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  gap: 0;
+  margin: 0;
+}
+
+.bot-panel-btn {
+  flex: 1;
+  min-height: 26px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .3px;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+
+#bot-panel-start {
+  background: $accent;
+  color: #1b2c12;
+
+  &:hover:not(:disabled) { background: #c9efa7; }
+  &:active:not(:disabled) { background: #a4d575; }
+}
+
+#bot-panel-stop {
+  border-color: #55423c;
+  background: #261f1c;
+  color: $danger;
+
+  &:hover { background: #372722; border-color: #8d5e51; }
+  &:active { background: #57332d; }
+}

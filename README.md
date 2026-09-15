@@ -51,7 +51,7 @@ Then load the generated `dist` directory as an unpacked extension.
 2.  The **ChessBot** panel will appear on the screen.
 3.  Click **START** to begin board detection and analysis.
 4.  Toggle **AUTO PLAY** if you want the bot to make moves automatically (ideal for engine-vs-bot matches).
-5.  Use the **Advanced Settings** (arrow icon) to adjust Auto New Match, Auto Rematch, random delay, mistake probability, and depth.
+5.  Use the **Advanced Settings** (arrow icon) to adjust Auto New Match, Auto Rematch, average move selection, random delay, mistake probability, engine variations (MultiPV), and depth.
 
 ## 💡 Optimal Settings for Auto Features
 

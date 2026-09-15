@@ -6,15 +6,24 @@ import icon from "../public/icons/icon.svg";
 
 interface SettingProps { settings: Settings; change: (update: Partial<Settings>) => void }
 
+/** Carries continuous panel coordinates to SCSS without presentational declarations. */
+interface PanelVars extends CSSProperties { "--bot-top"?: string | undefined; "--bot-right"?: string | undefined; "--bot-left"?: string | undefined }
+
+/** Carries the continuous evaluation share to SCSS without presentational declarations. */
+interface EvalVars extends CSSProperties { "--bot-white"?: string | undefined }
+
+/** Maps engine status colors to SCSS tone names so TS never declares colors. */
+const STATUS_TONES: Record<string, string> = { "#9ca3af": "muted", "#10b981": "success", "#3b82f6": "info", "#ef4444": "danger", "#f59e0b": "warning", "#f97316": "ember" };
+
 /** Renders a compact labeled checkbox without changing its saved behavior. */
-function Toggle({ label, name, settings, change }: SettingProps & { label: string; name: "autoPlay" | "autoNewMatch" | "autoRematch" | "analyzeOpponent" }) {
+function Toggle({ label, name, settings, change }: SettingProps & { label: string; name: "autoPlay" | "autoNewMatch" | "autoRematch" | "analyzeOpponent" | "averageMove" }) {
   return <div className="bot-setting-item"><label className="bot-checkbox-label"><input type="checkbox" checked={settings[name]} onChange={
     /** Saves the selected automation preference. */
     (event) => change({ [name]: event.target.checked })} /><span>{label}</span></label></div>;
 }
 
 /** Renders a slider in display units while preserving its stored numeric units. */
-function Slider({ label, name, max, min = 0, step = 1, scale = 1, suffix = "", settings, change }: SettingProps & { label: string; name: "autoPlayDelay" | "mistakeProbability" | "depth"; max: number; min?: number; step?: number; scale?: number; suffix?: string }) {
+function Slider({ label, name, max, min = 0, step = 1, scale = 1, suffix = "", settings, change }: SettingProps & { label: string; name: "autoPlayDelay" | "mistakeProbability" | "depth" | "lines"; max: number; min?: number; step?: number; scale?: number; suffix?: string }) {
   const value = settings[name] / scale;
   return <div className="bot-setting-item"><label htmlFor={`bot-${name}`}><span>{label}</span><span>{value}{suffix}</span></label><input id={`bot-${name}`} aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={
     /** Converts the displayed value back to the stored units. */
@@ -43,11 +52,12 @@ function Evaluation({ state }: { state: PanelState }) {
   const text = hasMate ? `${mate < 0 ? "-" : ""}M${Math.abs(mate)}` : `${score > 0 ? "+" : ""}${score.toFixed(2)}`;
   const whiteLabel = white >= 50;
   const labelFirst = whiteLabel === (state.player === "w");
-  const label = <div id="bot-eval-text" className="bot-eval-text" style={{ color: whiteLabel ? "#000000" : "#ffffff", right: labelFirst ? 0 : "auto", left: labelFirst ? "auto" : 0 }}>{text}</div>;
+  const bar: EvalVars = { "--bot-white": `${white}%` };
+  const label = <div id="bot-eval-text" className="bot-eval-text" data-on={whiteLabel ? "white" : "black"} data-anchor={labelFirst ? "right" : "left"}>{text}</div>;
   return <div id="bot-eval-container" className="bot-eval-container" aria-label={`Evaluation ${text}`}>
-    <div id="bot-eval-bar" className="bot-eval-bar">
-      <div id="bot-eval-white" className="bot-eval-segment white" style={{ width: `${white}%`, order: state.player === "w" ? 1 : 2 }}>{whiteLabel && label}</div>
-      <div id="bot-eval-black" className="bot-eval-segment black" style={{ width: `${100 - white}%`, order: state.player === "w" ? 2 : 1 }}>{!whiteLabel && label}</div>
+    <div id="bot-eval-bar" className="bot-eval-bar" data-player={state.player} style={bar}>
+      <div id="bot-eval-white" className="bot-eval-segment white">{whiteLabel && label}</div>
+      <div id="bot-eval-black" className="bot-eval-segment black">{!whiteLabel && label}</div>
     </div>
   </div>;
 }
@@ -104,21 +114,23 @@ export function App() {
   }
 
   const saved = position ?? state.settings.panelPos;
-  const style: CSSProperties = { top: `clamp(0px, ${saved.top}, calc(100vh - 50px))`, right: saved.left ? "auto" : saved.right ?? "10px" };
-  if (saved.left) style.left = `clamp(0px, ${saved.left}, max(0px, calc(100vw - 242px)))`;
+  const style: PanelVars = { "--bot-top": saved.top, "--bot-right": saved.left ? "auto" : saved.right ?? "10px" };
+  if (saved.left) style["--bot-left"] = saved.left;
   const controls = { settings: state.settings, change };
-  return <div id="bot-overlay-panel" ref={panel} style={style}>
+  return <div id="bot-overlay-panel" ref={panel} data-anchored={saved.left ? "left" : "right"} style={style}>
     <div className="bot-panel-header" onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag}><h3><img src={icon} width="16" height="16" alt="" draggable={false} />CHESS.COM BOT<span className="bot-version">v{chrome.runtime.getManifest().version}</span></h3></div>
     <div className="bot-controls-row"><button id={state.running ? "bot-panel-stop" : "bot-panel-start"} className="bot-panel-btn" onClick={state.running ? stop : start} disabled={!state.loaded}>{state.running ? "STOP" : "START"}</button></div>
     <div id="bot-move-display"><span className="label">BEST MOVE</span><span className="value" id="best-move-text">{state.move}</span><Evaluation state={state} /></div>
-    <div id="bot-status-text" className="bot-status-text" style={{ color: state.color }} role="status">{state.status}</div>
+    <div id="bot-status-text" className="bot-status-text" data-tone={STATUS_TONES[state.color] ?? "muted"} role="status">{state.status}</div>
     <div id="bot-panel-footer"><button id="bot-advanced-toggle" className={advanced ? "open" : ""} title="Toggle Settings" aria-label="Toggle Settings" aria-expanded={advanced} aria-controls="bot-advanced-panel" onClick={toggleAdvanced}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6" /></svg></button></div>
     <div id="bot-advanced-panel" className={`bot-advanced-section ${advanced ? "open" : ""}`} hidden={!advanced}>
       <AutoPlay {...controls} />
       <Toggle label="AUTO NEW MATCH" name="autoNewMatch" {...controls} />
       <Toggle label="AUTO REMATCH" name="autoRematch" {...controls} />
       <Toggle label="ANALYZE OPPONENT" name="analyzeOpponent" {...controls} />
+      <Toggle label="AVERAGE MOVE" name="averageMove" {...controls} />
       <Slider label="MISTAKE" name="mistakeProbability" max={100} suffix="%" {...controls} />
+      <Slider label="VARIATIONS" name="lines" min={1} max={10} {...controls} />
       <Slider label="DEPTH" name="depth" min={1} max={30} {...controls} />
     </div>
   </div>;

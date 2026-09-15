@@ -9,10 +9,11 @@ import { chromium } from "@playwright/test";
 async function main(): Promise<void> {
   const icons = resolve(dirname(fileURLToPath(import.meta.url)), "../public/icons");
   const svg = await readFile(resolve(icons, "icon.svg"), "utf8");
+  const css = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), "icons.css"), "utf8");
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ deviceScaleFactor: 1 });
-    await page.setContent(`<!doctype html><html><head><style>html,body{margin:0;background:transparent}svg{display:block;width:100vw;height:100vh}</style></head><body>${svg}</body></html>`);
+    await page.setContent(`<!doctype html><html><head><style>${css}</style></head><body>${svg}</body></html>`);
     for (const size of [16, 32, 48, 128]) {
       await page.setViewportSize({ width: size, height: size });
       const png = await page.screenshot({ path: resolve(icons, `icon-${size}.png`), omitBackground: true });

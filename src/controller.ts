@@ -4,6 +4,7 @@ import { boardBusy, canPlay, canResumePromotion, clearHighlights, getBoard, high
 import { findGameAction, type GameAction } from "./automation";
 import { analyzePosition, delay, stopAnalysis } from "./engine-client";
 import { findMistake, playerScore } from "./mistake-mode";
+import { chooseAverageMove } from "./move-selection";
 import { DEFAULT_SETTINGS, normalizeSettings, type Settings, type Variation, type PanelPosition } from "./shared";
 import { loadSettings, saveSettings } from "./storage";
 
@@ -153,7 +154,7 @@ export class Controller {
     } finally { if (!signal.aborted) this.executing = false; }
   }
 
-  /** Calculates the best move and restores probability-based mistakes and randomized auto play. */
+  /** Calculates a playable move and restores average selection, safe mistakes, and randomized auto play. */
   private async analyze(fen: string, player: "w" | "b", signal: AbortSignal): Promise<void> {
     const settings = this.state.settings;
     try {
@@ -170,7 +171,9 @@ export class Controller {
       const playerTurn = chess.turn() === player;
       let move = result.bestMove;
       let mistake: "ideal" | "suboptimal" | undefined;
-      if (playerTurn && playerScore(evaluation, player) > 1.5 && Math.random() * 100 < settings.mistakeProbability) {
+      if (playerTurn && settings.averageMove) {
+        move = chooseAverageMove(result.variations, player) ?? move;
+      } else if (playerTurn && playerScore(evaluation, player) > 1.5 && Math.random() * 100 < settings.mistakeProbability) {
         this.patch({ status: "Attempting to find mistake...", color: "#f59e0b" });
         const candidate = await findMistake(fen, player, settings, signal, move);
         if (candidate) { move = candidate.move; mistake = candidate.type; }

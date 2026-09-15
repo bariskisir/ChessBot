@@ -1,0 +1,28 @@
+/* Shadow-host reset and shared control foundations. */
+@use "tokens" as *;
+
+:host {
+  all: initial;
+  color-scheme: dark;
+  position: relative;
+  z-index: 2147483646;
+}
+
+button, input {
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible, input:focus-visible {
+  outline: 2px solid $accent;
+  outline-offset: 3px;
+}
+
+button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}

@@ -7,7 +7,16 @@ import { DEFAULT_SETTINGS, normalizeSettings, parseInfo } from "../src/shared";
 /** Ensures corrupt and obsolete settings cannot select a remote engine. */
 function settingsValidation(): void {
   assert.deepEqual(normalizeSettings(null), DEFAULT_SETTINGS);
-  assert.deepEqual(normalizeSettings({ depth: Infinity, time: -2, lines: 99, autoPlayDelay: NaN, autoPlay: "true", engineType: "api" }), { ...DEFAULT_SETTINGS, lines: 3 });
+  assert.equal(DEFAULT_SETTINGS.depth, 10);
+  assert.equal(DEFAULT_SETTINGS.autoPlayDelay, 1000);
+  assert.equal(DEFAULT_SETTINGS.autoPlay, true);
+  assert.equal(DEFAULT_SETTINGS.analyzeOpponent, false);
+  assert.equal(DEFAULT_SETTINGS.autoNewMatch, true);
+  assert.equal(DEFAULT_SETTINGS.mistakeProbability, 20);
+  assert.equal(DEFAULT_SETTINGS.lines, 10);
+  assert.equal(DEFAULT_SETTINGS.averageMove, true);
+  assert.deepEqual(normalizeSettings({ depth: Infinity, time: -2, lines: 99, autoPlayDelay: NaN, autoPlay: "true", engineType: "api" }), { ...DEFAULT_SETTINGS, lines: 10 });
+  assert.equal(normalizeSettings({ lines: -3 }).lines, 1);
   const restored = normalizeSettings({ autoPlay: false, autoNewMatch: true, autoRematch: true, autoPlayDelay: 10000, mistakeProbability: 90, panelPos: { top: "82px", left: "330px" } });
   assert.equal(restored.autoPlay, false);
   assert.equal(restored.autoNewMatch, true);

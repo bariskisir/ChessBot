@@ -1,0 +1,10 @@
+/* Shared palette and tone names for every ChessBot style module. */
+$surface: #171d19;
+$border: #303c32;
+$text: #edf2e8;
+$muted: #a2aea0;
+$accent: #b7e58b;
+$danger: #f29a95;
+$detail-size: 10px;
+$status-tones: ("muted": #9ca3af, "success": #10b981, "info": #3b82f6, "danger": #ef4444, "warning": #f59e0b, "ember": #f97316);
+$highlight-tones: ("default": #10b981, "ideal": #ef4444, "suboptimal": #f97316);

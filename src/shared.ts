@@ -3,15 +3,15 @@ export interface PanelPosition { top: string; left?: string; right?: string }
 export interface Settings {
   depth: number; time: number; lines: number; autoPlay: boolean;
   autoPlayDelay: number; autoNewMatch: boolean; autoRematch: boolean; analyzeOpponent: boolean;
-  mistakeProbability: number; thinkingTime: number; panelPos: PanelPosition;
+  averageMove: boolean; mistakeProbability: number; thinkingTime: number; panelPos: PanelPosition;
 }
 export interface Variation { depth: number; score: number; mate: number | null; moves: string[]; nodes: number }
 export interface Analysis { fen: string; bestMove: string; variations: Variation[] }
 export interface EngineRequest { target: "background" | "engine"; action: "analyze" | "stop"; owner: string; fen: string; settings: Settings }
 export type EngineResponse = { result: Analysis } | { error: string };
 export const DEFAULT_SETTINGS: Settings = {
-  depth: 18, time: 0, lines: 1, autoPlay: true, autoPlayDelay: 0,
-  autoNewMatch: false, autoRematch: false, analyzeOpponent: true, mistakeProbability: 0,
+  depth: 10, time: 0, lines: 10, autoPlay: true, autoPlayDelay: 1000,
+  autoNewMatch: true, autoRematch: false, analyzeOpponent: false, averageMove: true, mistakeProbability: 20,
   thinkingTime: 100, panelPos: { top: "10px", right: "10px" },
 };
 
@@ -27,10 +27,12 @@ export function normalizeSettings(value: unknown): Settings {
   if (data.panelPos?.left !== undefined) panelPos.left = positionValue(data.panelPos.left, "10px");
   else panelPos.right = positionValue(data.panelPos?.right, "10px");
   return {
-    depth: bounded(data.depth, 18, 1, 30), time: bounded(data.time, 0, 0, 15000), lines: bounded(data.lines, 1, 1, 3),
+    depth: bounded(data.depth, 10, 1, 30), time: bounded(data.time, 0, 0, 15000), lines: bounded(data.lines, 10, 1, 10),
     autoPlay: typeof data.autoPlay === "boolean" ? data.autoPlay : true,
-    autoPlayDelay: bounded(data.autoPlayDelay, 0, 0, 10000), autoNewMatch: data.autoNewMatch === true,
-    autoRematch: data.autoRematch === true, analyzeOpponent: data.analyzeOpponent !== false, mistakeProbability: bounded(data.mistakeProbability, 0, 0, 100),
+    autoPlayDelay: bounded(data.autoPlayDelay, 1000, 0, 10000), autoNewMatch: data.autoNewMatch !== false,
+    autoRematch: data.autoRematch === true, analyzeOpponent: data.analyzeOpponent === true,
+    averageMove: typeof data.averageMove === "boolean" ? data.averageMove : true,
+    mistakeProbability: bounded(data.mistakeProbability, 20, 0, 100),
     thinkingTime: bounded(data.thinkingTime, 100, 1, 100), panelPos,
   };
 }

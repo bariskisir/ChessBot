@@ -8,13 +8,17 @@ ChessBot is a **Chrome Manifest V3 extension** that adds a floating analysis pan
 **Chess.com**. The panel analyses the current board with a **local Stockfish 18 WASM**
 engine and can optionally play moves and start follow-up games automatically.
 
-- Version: `2.0.0` (see `package.json` and `public/manifest.json`).
+- Version: `2.0.1` (see `package.json` and `public/manifest.json`).
 - Engine is **100% local**. There is no remote engine, no API key, no engine selector,
   and no network calls for analysis.
 - The overlay behaves the **same regardless of opponent type** (computer bot or human).
   Do **not** reintroduce route/path gating such as `/play/(computer|bots)` checks.
 - Stack: React 19 + TypeScript + SCSS (compiled to text and injected into a shadow root),
   bundled with esbuild, tested with `node:test` and Playwright.
+- Styling lives only in `src/styles/` modules (`index.scss` for the shadow-root panel,
+  `board.scss` for page-world highlight squares injected once by `content.ts`).
+  TS/TSX files declare no presentation: dynamic values reach SCSS only as `data-*`
+  attributes or `--bot-*` CSS variables.
 
 ## Commands
 
@@ -58,6 +62,8 @@ Content/UI flow (isolated world):
   executes synthetic clicks, and handles promotions.
 - `src/automation.ts` finds game-over New Game / Rematch controls.
 - `src/mistake-mode.ts` picks safe non-losing "mistake" candidates.
+- `src/move-selection.ts` picks a non-losing average-quality move from the engine's
+  MultiPV list when `averageMove` is enabled.
 
 Key behaviour in `src/controller.ts`:
 
@@ -110,7 +116,8 @@ These are enforced by `scripts/check-comments.ts` and `tsc`:
   highlights, real auto-play clicks, STOP cancellation, promotions, rematch/new-match
   precedence, persisted settings, dragging, offline operation, and tab isolation.
 - The fixture exposes `window.chessbotFixture` (`setFen`, `gameOver`, counters,
-  `openPromotion`, `configurePromotion`). Extend it when adding browser coverage.
+  `openPromotion`, `configurePromotion`). Its presentation lives in
+  `tests/board-fixture.css`. Extend it when adding browser coverage.
 - The suite must not touch a signed-in live game.
 - No screenshot/artifact files are produced anymore; do not add new ones.
 

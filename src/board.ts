@@ -51,10 +51,10 @@ export function readPosition(): string | null {
 /** Removes all suggestion indicators created by this extension. */
 export function clearHighlights(): void { for (const element of document.querySelectorAll(".chessbot-square")) element.remove(); }
 
-/** Converts a square to percentages using the current board orientation. */
-function coordinates(square: string, board: HTMLElement): { x: number; y: number } {
+/** Converts a square to board indices using the current board orientation. */
+function coordinates(square: string, board: HTMLElement): { file: number; rank: number } {
   const file = square.charCodeAt(0) - 97, rank = Number(square[1]) - 1, flipped = board.classList.contains("flipped");
-  return { x: (flipped ? 7 - file : file) * 12.5, y: (flipped ? rank : 7 - rank) * 12.5 };
+  return { file: flipped ? 7 - file : file, rank: flipped ? rank : 7 - rank };
 }
 
 /** Highlights a legal UCI move without blocking board interaction. */
@@ -65,8 +65,10 @@ export function highlight(move: string, mistake?: MistakeType): void {
   for (const square of [move.slice(0, 2), move.slice(2, 4)]) {
     const point = coordinates(square, board), mark = document.createElement("div");
     mark.className = "chessbot-square";
-    const color = mistake === "ideal" ? "239,68,68" : mistake === "suboptimal" ? "249,115,22" : "16,185,129";
-    mark.style.cssText = `position:absolute;left:${point.x}%;top:${point.y}%;width:12.5%;height:12.5%;background:rgba(${color},${square === move.slice(0, 2) ? 0.4 : 0.7});pointer-events:none;z-index:5`;
+    mark.dataset.file = String(point.file);
+    mark.dataset.rank = String(point.rank);
+    mark.dataset.end = square === move.slice(0, 2) ? "from" : "to";
+    mark.dataset.tone = mistake === "ideal" ? "ideal" : mistake === "suboptimal" ? "suboptimal" : "default";
     board.append(mark);
   }
 }
@@ -88,7 +90,7 @@ export function boardBusy(): boolean {
 /** Dispatches the pointer and mouse sequence selecting a board square. */
 function clickSquare(board: HTMLElement, square: string): void {
   const rect = board.getBoundingClientRect(), point = coordinates(square, board);
-  const clientX = rect.left + (point.x + 6.25) * rect.width / 100, clientY = rect.top + (point.y + 6.25) * rect.height / 100;
+  const clientX = rect.left + (point.file * 12.5 + 6.25) * rect.width / 100, clientY = rect.top + (point.rank * 12.5 + 6.25) * rect.height / 100;
   dispatchClick(document.elementFromPoint(clientX, clientY) ?? board, clientX, clientY);
 }
 
