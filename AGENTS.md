@@ -8,7 +8,7 @@ ChessBot is a **Chrome Manifest V3 extension** that adds a floating analysis pan
 **Chess.com**. The panel analyses the current board with a **local Stockfish 18 WASM**
 engine and can optionally play moves and start follow-up games automatically.
 
-- Version: `2.0.1` (see `package.json` and `public/manifest.json`).
+- Version: `2.0.2` (see `package.json` and `public/manifest.json`).
 - Engine is **100% local**. There is no remote engine, no API key, no engine selector,
   and no network calls for analysis.
 - The overlay behaves the **same regardless of opponent type** (computer bot or human).
@@ -34,23 +34,26 @@ npm run icons          # regenerates public/icons/icon-*.png from icon.svg
 `npm run check` must pass before any change is considered done. If you add or edit a
 function, update its documentation comment as described below.
 
+Pushing a `v*` tag (matching `public/manifest.json`) triggers `.github/workflows/release.yml`,
+which runs check, unit tests, and build, then attaches `dist.zip` (the `dist/` folder) to the
+release — the same asset layout as previous releases.
+
 To use the extension manually: `npm run build`, open `chrome://extensions`, enable
 Developer mode, **Load unpacked**, select `dist/`, then refresh a Chess.com tab.
 
 ## Architecture
 
-Four browser entry points are bundled into `dist/`:
+Three browser entry points are bundled into `dist/`:
 
 | Source | Output | Role |
 | --- | --- | --- |
 | `src/background.ts` | `background.js` | MV3 service worker. Ensures the offscreen document exists and routes document-scoped engine requests to it, tagging each request with a per-tab `owner`. |
 | `src/engine.ts` | `offscreen.js` | Runs inside the offscreen document. Owns the Stockfish worker, a job queue, per-owner cancellation, a 20s watchdog, depth/movetime limits, MultiPV, and UCI identity verification (`id name Stockfish 18`). |
-| `src/bridge.ts` | `bridge.js` | Content script in the **MAIN** world. Every 250ms copies the site's real FEN onto the board as `data-chessbot-fen` so the isolated world can read it. |
 | `src/content.ts` | `content.js` | Isolated world. Calls `mount()`. |
 
 Content/UI flow (isolated world):
 
-- `src/content.ts` → `src/mount.tsx` (creates `#chessbot-root` shadow host) →
+- `src/content.ts` → `src/mount.tsx` (creates an id-free shadow host) →
   `src/app.tsx` (React panel) → `src/controller.ts` (behaviour).
 - `src/engine-client.ts` talks to `background` via `chrome.runtime.sendMessage`
   (`analyzePosition`, `stopAnalysis`, and an abortable `delay`).
@@ -58,8 +61,9 @@ Content/UI flow (isolated world):
   `parseInfo` (UCI → Variation, scores normalised to White).
 - `src/storage.ts` persists `Settings` in `chrome.storage.local` and migrates the
   legacy `bot-settings` localStorage entry on first load.
-- `src/board.ts` reads/serialises the position, validates legality, highlights moves,
-  executes synthetic clicks, and handles promotions.
+- `src/board.ts` reads/serialises the position from visible markup only (no page-world
+  helpers or marker attributes), validates legality, highlights moves with generic
+  selectors, drags pieces along jittered paths with human pacing, and handles promotions.
 - `src/automation.ts` finds game-over New Game / Rematch controls.
 - `src/mistake-mode.ts` picks safe non-losing "mistake" candidates.
 - `src/move-selection.ts` picks a non-losing average-quality move from the engine's

@@ -10,7 +10,7 @@ export interface Analysis { fen: string; bestMove: string; variations: Variation
 export interface EngineRequest { target: "background" | "engine"; action: "analyze" | "stop"; owner: string; fen: string; settings: Settings }
 export type EngineResponse = { result: Analysis } | { error: string };
 export const DEFAULT_SETTINGS: Settings = {
-  depth: 10, time: 0, lines: 10, autoPlay: true, autoPlayDelay: 1000,
+  depth: 10, time: 0, lines: 10, autoPlay: true, autoPlayDelay: 300,
   autoNewMatch: true, autoRematch: false, analyzeOpponent: false, averageMove: true, mistakeProbability: 20,
   thinkingTime: 100, panelPos: { top: "10px", right: "10px" },
 };
@@ -29,7 +29,7 @@ export function normalizeSettings(value: unknown): Settings {
   return {
     depth: bounded(data.depth, 10, 1, 30), time: bounded(data.time, 0, 0, 15000), lines: bounded(data.lines, 10, 1, 10),
     autoPlay: typeof data.autoPlay === "boolean" ? data.autoPlay : true,
-    autoPlayDelay: bounded(data.autoPlayDelay, 1000, 0, 10000), autoNewMatch: data.autoNewMatch !== false,
+    autoPlayDelay: bounded(data.autoPlayDelay, 300, 0, 10000), autoNewMatch: data.autoNewMatch !== false,
     autoRematch: data.autoRematch === true, analyzeOpponent: data.analyzeOpponent === true,
     averageMove: typeof data.averageMove === "boolean" ? data.averageMove : true,
     mistakeProbability: bounded(data.mistakeProbability, 20, 0, 100),

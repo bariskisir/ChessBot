@@ -1,7 +1,7 @@
 /* Move-suggestion squares, injected once into the page world where the board lives. */
 @use "tokens" as *;
 
-.chessbot-square {
+div.highlight[data-tone] {
   position: absolute;
   width: 12.5%;
   height: 12.5%;

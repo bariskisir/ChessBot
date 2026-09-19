@@ -1,6 +1,6 @@
 /** Coordinates panel behavior with cancelable local analysis and automation. */
 import { Chess } from "chess.js";
-import { boardBusy, canPlay, canResumePromotion, clearHighlights, getBoard, highlight, playMove, readPosition, resumePromotion, userColor } from "./board";
+import { boardBusy, canPlay, canResumePromotion, clearHighlights, getBoard, highlight, playMove, readPosition, resumePromotion, samePosition, userColor } from "./board";
 import { findGameAction, type GameAction } from "./automation";
 import { analyzePosition, delay, stopAnalysis } from "./engine-client";
 import { findMistake, playerScore } from "./mistake-mode";
@@ -165,7 +165,7 @@ export class Controller {
       const started = Date.now();
       const result = await analyzePosition(fen, settings, signal);
       await delay(Math.max(0, settings.thinkingTime - (Date.now() - started)), signal);
-      if (readPosition() !== fen || userColor() !== player) return;
+      if (!samePosition(readPosition() ?? "", fen) || userColor() !== player) return;
       const evaluation = result.variations[0];
       if (evaluation) this.patch({ evaluation });
       const playerTurn = chess.turn() === player;
@@ -179,19 +179,19 @@ export class Controller {
         if (candidate) { move = candidate.move; mistake = candidate.type; }
       }
       signal.throwIfAborted();
-      if (readPosition() !== fen || userColor() !== player) return;
+      if (!samePosition(readPosition() ?? "", fen) || userColor() !== player) return;
       const showMove = playerTurn || settings.analyzeOpponent;
       this.patch({ move: showMove ? move.toUpperCase() : "---", status: !playerTurn ? "Opponent's turn" : mistake === "ideal" ? "Mistake Mode!" : mistake === "suboptimal" ? "Suboptimal Mode" : "Analyzing Board", color: !playerTurn ? "#9ca3af" : mistake === "ideal" ? "#ef4444" : mistake === "suboptimal" ? "#f97316" : "#10b981" });
       if (!playerTurn || !settings.autoPlay || !canPlay(fen)) { if (showMove) highlight(move, mistake); else clearHighlights(); return; }
       const moveDelay = Math.floor(Math.random() * (settings.autoPlayDelay + 1));
       this.patch({ status: moveDelay ? `Waiting ${Math.ceil(moveDelay / 100) / 10}s...` : "Playing move...", color: "#3b82f6" });
       await delay(moveDelay, signal);
-      if (readPosition() !== fen || userColor() !== player) return;
+      if (!samePosition(readPosition() ?? "", fen) || userColor() !== player) return;
       this.executing = true;
       if (!await playMove(fen, move, signal)) return;
       if (mistake) highlight(move, mistake);
       await delay(700, signal);
-      if (readPosition() === fen) this.patch({ status: "Move not accepted - press START to retry", color: "#f59e0b" });
+      if (samePosition(readPosition() ?? "", fen)) this.patch({ status: "Move not accepted - press START to retry", color: "#f59e0b" });
     } catch (error) { if (!signal.aborted) this.reportError(error); }
     finally { if (!signal.aborted) this.executing = false; }
   }

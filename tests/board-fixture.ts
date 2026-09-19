@@ -4,6 +4,7 @@ import fixtureStyles from "./board-fixture.css";
 const game = new Chess();
 const board = document.createElement("wc-chess-board") as HTMLElement & { game: { getFEN: () => string } };
 let selected = "";
+let dragFrom = "";
 const counters = { moves: 0, rematches: 0, newMatches: 0 };
 let promotionDelay = 0;
 let promotionAccepted = true;
@@ -13,8 +14,31 @@ const symbols: Record<string, string> = { p: "♟", n: "♞", b: "♝", r: "♜"
 function getFEN(): string { return game.fen(); }
 board.game = { getFEN };
 
+/** Mirrors the site's turn markers so the extension reads the side to move without helpers. */
+function updateClocks(): void {
+  let bottom = document.querySelector("#board-layout-player-bottom"), top = document.querySelector("#board-layout-player-top");
+  if (!(bottom instanceof HTMLElement) || !(top instanceof HTMLElement)) {
+    bottom = document.createElement("div");
+    bottom.id = "board-layout-player-bottom";
+    top = document.createElement("div");
+    top.id = "board-layout-player-top";
+    document.body.append(bottom, top);
+  }
+  const orientation = board.classList.contains("flipped") ? "b" : "w";
+  for (const [container, active] of [[bottom, game.turn() === orientation], [top, game.turn() !== orientation]] as const) {
+    let marker = container.querySelector(".player-info");
+    if (!marker) {
+      marker = document.createElement("div");
+      marker.className = "player-info";
+      container.append(marker);
+    }
+    marker.classList.toggle("active", active);
+  }
+}
+
 /** Renders board cells and piece classes understood by the extension. */
 function render(): void {
+  updateClocks();
   board.replaceChildren();
   for (let rank = 8; rank >= 1; rank--) for (let file = 1; file <= 8; file++) {
     const cell = document.createElement("div");
@@ -30,24 +54,51 @@ function render(): void {
   }
 }
 
-/** Accepts actual synthetic square clicks and applies a legal fixture move. */
-function click(event: MouseEvent): void {
+/** Returns the exact position for test synchronization without page markers. */
+function currentFen(): string { return game.fen(); }
+
+/** Converts client coordinates into a board square, rejecting out-of-board points. */
+function pointToSquare(clientX: number, clientY: number): string {
   const rect = board.getBoundingClientRect();
-  const file = Math.floor((event.clientX - rect.left) / rect.width * 8), rank = 8 - Math.floor((event.clientY - rect.top) / rect.height * 8);
-  const square = `${"abcdefgh"[file]}${rank}`;
-  if (!selected) { selected = square; return; }
-  if (game.get(selected as Square)?.type === "p" && (rank === 8 || rank === 1)) {
-    const from = selected;
-    selected = "";
-    void openPromotion(from, square);
+  const file = Math.floor((clientX - rect.left) / rect.width * 8), rank = 8 - Math.floor((clientY - rect.top) / rect.height * 8);
+  if (file < 0 || file > 7 || rank < 1 || rank > 8) return "";
+  return `${"abcdefgh"[file]}${rank}`;
+}
+
+/** Applies one fixture move, opening the promotion chooser for pawns on the last rank. */
+function applyMove(from: string, to: string): void {
+  if (game.get(from as Square)?.type === "p" && (to[1] === "8" || to[1] === "1")) {
+    void openPromotion(from, to);
     return;
   }
-  try { game.move({ from: selected, to: square, promotion: "q" }); counters.moves++; render(); } catch { /* Ignore invalid synthetic moves. */ }
+  try { game.move({ from, to, promotion: "q" }); counters.moves++; render(); } catch { /* Ignore invalid synthetic moves. */ }
+}
+
+/** Records a drag start so synthetic pointer drags resolve like human piece drags. */
+function press(event: PointerEvent): void {
+  const square = pointToSquare(event.clientX, event.clientY);
+  if (square) dragFrom = square;
+}
+
+/** Accepts synthetic drags and square clicks and applies a legal fixture move. */
+function click(event: MouseEvent): void {
+  const square = pointToSquare(event.clientX, event.clientY);
+  if (!square) return;
+  if (dragFrom && dragFrom !== square) {
+    const from = dragFrom;
+    dragFrom = "";
+    applyMove(from, square);
+    return;
+  }
+  dragFrom = "";
+  if (!selected) { selected = square; return; }
+  const from = selected;
   selected = "";
+  applyMove(from, square);
 }
 
 /** Loads another position while leaving the panel mounted. */
-function setFen(fen: string): void { game.load(fen); selected = ""; render(); }
+function setFen(fen: string): void { game.load(fen); selected = ""; dragFrom = ""; render(); }
 
 /** Configures delayed or rejected promotion input for regression tests. */
 function configurePromotion(delay: number, accepted = true): void { promotionDelay = delay; promotionAccepted = accepted; }
@@ -75,12 +126,15 @@ async function openPromotion(from: string, to: string): Promise<void> {
       if (event.type === "pointerdown") events.length = 0;
       events.push(event.type);
       if (event.type !== "click" || !promotionAccepted) return;
-      if (events.join(",") !== "pointerdown,mousedown,pointerup,mouseup,click") return;
+      const gesture = events.filter(
+        /** Allows pointer travel between the press and release of a drag. */
+        (type) => type !== "pointermove" && type !== "mousemove");
+      if (gesture.join(",") !== "pointerdown,mousedown,pointerup,mouseup,click") return;
       game.move({ from, to, promotion: piece });
       counters.moves++;
       render();
     }
-    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) option.addEventListener(type, onInput);
+    for (const type of ["pointerdown", "mousedown", "pointermove", "mousemove", "pointerup", "mouseup", "click"]) option.addEventListener(type, onInput);
     chooser.append(option);
   }
   board.append(chooser);
@@ -126,7 +180,7 @@ function finishGame(): void { for (const element of document.querySelectorAll(".
 /** Clears action counters between independent automation checks. */
 function resetCounters(): void { counters.moves = 0; counters.rematches = 0; counters.newMatches = 0; }
 
-declare global { interface Window { chessbotFixture: { setFen: typeof setFen; gameOver: typeof gameOver; counters: typeof counters; resetCounters: typeof resetCounters; openPromotion: typeof openPromotion; configurePromotion: typeof configurePromotion } } }
+declare global { interface Window { chessbotFixture: { setFen: typeof setFen; fen: typeof currentFen; gameOver: typeof gameOver; counters: typeof counters; resetCounters: typeof resetCounters; openPromotion: typeof openPromotion; configurePromotion: typeof configurePromotion } } }
 
 /** Injects the fixture presentation so the mock declares no styles. */
 function injectStyles(): void {
@@ -137,8 +191,12 @@ function injectStyles(): void {
   document.head.append(style);
 }
 
-window.chessbotFixture = { setFen, gameOver, counters, resetCounters, openPromotion, configurePromotion };
+window.chessbotFixture = { setFen, fen: currentFen, gameOver, counters, resetCounters, openPromotion, configurePromotion };
+board.addEventListener("pointerdown", press);
 board.addEventListener("click", click);
+new MutationObserver(
+  /** Refreshes turn markers when the board orientation changes beneath the fixture. */
+  () => updateClocks()).observe(board, { attributes: true, attributeFilter: ["class"] });
 document.body.append(board);
 injectStyles();
 if (!localStorage.getItem("bot-settings")) localStorage.setItem("bot-settings", JSON.stringify({ autoPlay: false, depth: 6, autoPlayDelay: 0, mistakeProbability: 0, analyzeOpponent: true, panelPos: { top: "10px", right: "10px" } }));

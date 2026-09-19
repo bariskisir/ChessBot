@@ -18,7 +18,7 @@ async function verifyPromotions(page: Page): Promise<void> {
     await page.evaluate(
       /** Loads a legal promotion position and delays the queen chooser beyond the old timeout. */
       ({ fen, piece }) => { window.chessbotFixture.setFen(fen); window.chessbotFixture.configurePromotion(piece === "q" ? 3300 : 0); }, { fen, piece });
-    await expect(page.locator("wc-chess-board")).toHaveAttribute("data-chessbot-fen", fen);
+    await expectFen(page, fen);
     const accepted = await page.evaluate(
       /** Applies the requested promotion through the production board adapter. */
       ({ fen, piece }) => window.ChessbotBoardTest.playMove(fen, `a7a8${piece}`, AbortSignal.timeout(10000)), { fen, piece });
@@ -32,7 +32,7 @@ async function verifyPromotions(page: Page): Promise<void> {
   await page.evaluate(
     /** Opens the user's pending b7-a8 promotion without applying a piece choice. */
     async (fen) => { window.chessbotFixture.setFen(fen); window.chessbotFixture.configurePromotion(0); await window.chessbotFixture.openPromotion("b7", "a8"); }, supplied);
-  await expect(page.locator("wc-chess-board")).toHaveAttribute("data-chessbot-fen", supplied);
+  await expectFen(page, supplied);
   await page.getByLabel("AUTO PLAY", { exact: true }).check();
   await page.getByRole("button", { name: "START", exact: true }).click();
   await expect(page.locator(".piece.wq.square-18")).toHaveCount(1, { timeout: 10000 });
@@ -44,7 +44,7 @@ async function verifyPromotions(page: Page): Promise<void> {
   await page.evaluate(
     /** Creates a Black promotion chooser and flips the board to the player's perspective. */
     async (fen) => { window.chessbotFixture.setFen(fen); document.querySelector("wc-chess-board")!.classList.add("flipped"); await window.chessbotFixture.openPromotion("a2", "a1"); }, blackFen);
-  await expect(page.locator("wc-chess-board")).toHaveAttribute("data-chessbot-fen", blackFen);
+  await expectFen(page, blackFen);
   await page.getByRole("button", { name: "START", exact: true }).click();
   await expect(page.locator(".piece.bq.square-11")).toHaveCount(1, { timeout: 10000 });
   await page.getByRole("button", { name: "STOP", exact: true }).click();
@@ -53,7 +53,7 @@ async function verifyPromotions(page: Page): Promise<void> {
   await page.evaluate(
     /** Prepares an open chooser that rejects input until the cancellation test releases it. */
     async (fen) => { document.querySelector("wc-chess-board")!.classList.remove("flipped"); window.chessbotFixture.setFen(fen); window.chessbotFixture.configurePromotion(0, false); window.chessbotFixture.resetCounters(); await window.chessbotFixture.openPromotion("a7", "a8"); }, fen);
-  await expect(page.locator("wc-chess-board")).toHaveAttribute("data-chessbot-fen", fen);
+  await expectFen(page, fen);
   await page.getByRole("button", { name: "START", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Completing promotion...");
   await page.getByRole("button", { name: "STOP", exact: true }).click();
@@ -76,6 +76,13 @@ async function setRange(page: Page, label: string, value: string): Promise<void>
     (element, next) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(element, next); element.dispatchEvent(new Event("input", { bubbles: true })); }, value);
 }
 
+/** Waits until the fixture reports the expected position without page markers. */
+async function expectFen(page: Page, fen: string): Promise<void> {
+  await expect.poll(
+    /** Reads the fixture's actual position from the page world. */
+    () => page.evaluate(() => window.chessbotFixture.fen()), { timeout: 10000 }).toBe(fen);
+}
+
 /** Waits until a fixture counter reaches the expected number of actions. */
 async function count(page: Page, key: "moves" | "rematches" | "newMatches", expected: number): Promise<void> {
   await expect.poll(
@@ -94,7 +101,8 @@ async function verifyEvaluationUpdates(page: Page): Promise<void> {
     const trace = await page.evaluateHandle(
       /** Records every rendered evaluation while the next position is being calculated. */
       () => {
-        const root = document.querySelector("#chessbot-root")!.shadowRoot!;
+        /** Finds the panel shadow root without relying on a page-visible host identifier. */
+        const root = [...document.querySelectorAll("div")].find((element) => element.shadowRoot)?.shadowRoot!;
         const samples: string[] = [root.querySelector("#bot-eval-text")!.textContent!];
         const moves: string[] = [root.querySelector("#best-move-text")!.textContent!];
         const observer = new MutationObserver(
@@ -122,7 +130,7 @@ async function verifyEvaluationUpdates(page: Page): Promise<void> {
       /** Rejects temporary empty or reset move labels during analysis. */
       (value) => value === previousMove || value === nextMove), `Transient best move after ${move}: ${moves.join(", ")}`);
     assert.match(nextMove!, /^[A-H][1-8][A-H][1-8][QRBN]?$/);
-    await expect(page.locator(".chessbot-square")).toHaveCount(2);
+    await expect(page.locator(".highlight[data-tone]")).toHaveCount(2);
     const suggested = game.move({ from: nextMove!.slice(0, 2).toLowerCase(), to: nextMove!.slice(2, 4).toLowerCase(), promotion: nextMove![4]?.toLowerCase() ?? "q" });
     assert.equal(suggested.color, move === "e4" ? "b" : "w");
     game.undo();
@@ -172,11 +180,11 @@ try {
   await page.getByRole("button", { name: "START", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Analyzing Board", { timeout: 25000 });
   await expect(page.locator("#best-move-text")).toHaveText(/^[A-H][1-8][A-H][1-8][QRBN]?$/);
-  await expect(page.locator(".chessbot-square")).toHaveCount(2);
+  await expect(page.locator(".highlight[data-tone]")).toHaveCount(2);
   await expect(page.locator("#bot-eval-text")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await verifyEvaluationUpdates(page);
   await page.getByRole("button", { name: "STOP", exact: true }).click();
-  await expect(page.locator(".chessbot-square")).toHaveCount(0);
+  await expect(page.locator(".highlight[data-tone]")).toHaveCount(0);
   await expect(page.locator("#best-move-text")).toHaveText("---");
   await verifyPromotions(page);
   await page.evaluate(

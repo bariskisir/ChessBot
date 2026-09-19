@@ -8,7 +8,7 @@ import { DEFAULT_SETTINGS, normalizeSettings, parseInfo } from "../src/shared";
 function settingsValidation(): void {
   assert.deepEqual(normalizeSettings(null), DEFAULT_SETTINGS);
   assert.equal(DEFAULT_SETTINGS.depth, 10);
-  assert.equal(DEFAULT_SETTINGS.autoPlayDelay, 1000);
+  assert.equal(DEFAULT_SETTINGS.autoPlayDelay, 300);
   assert.equal(DEFAULT_SETTINGS.autoPlay, true);
   assert.equal(DEFAULT_SETTINGS.analyzeOpponent, false);
   assert.equal(DEFAULT_SETTINGS.autoNewMatch, true);
