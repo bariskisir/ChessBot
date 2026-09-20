@@ -154,7 +154,7 @@ export class Controller {
     } finally { if (!signal.aborted) this.executing = false; }
   }
 
-  /** Calculates a playable move and restores average selection, safe mistakes, and randomized auto play. */
+  /** Selects a playable move and honors the configured auto-play delay and animation preference. */
   private async analyze(fen: string, player: "w" | "b", signal: AbortSignal): Promise<void> {
     const settings = this.state.settings;
     try {
@@ -188,7 +188,7 @@ export class Controller {
       await delay(moveDelay, signal);
       if (!samePosition(readPosition() ?? "", fen) || userColor() !== player) return;
       this.executing = true;
-      if (!await playMove(fen, move, signal)) return;
+      if (!await playMove(fen, move, signal, settings.animateMoves)) return;
       if (mistake) highlight(move, mistake);
       await delay(700, signal);
       if (samePosition(readPosition() ?? "", fen)) this.patch({ status: "Move not accepted - press START to retry", color: "#f59e0b" });

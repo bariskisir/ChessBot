@@ -191,12 +191,19 @@ function releaseDrag(target: Element, x: number, y: number): void {
   target.dispatchEvent(new MouseEvent("click", options));
 }
 
-/** Drags a piece along a curved path with human pacing instead of instant square clicks. */
-async function dragMove(board: HTMLElement, from: string, to: string, signal: AbortSignal): Promise<void> {
+/** Drops instantly unless animated travel and human pacing are requested. */
+async function dragMove(board: HTMLElement, from: string, to: string, signal: AbortSignal, animateMoves: boolean): Promise<void> {
   const rect = board.getBoundingClientRect();
   const origin = coordinates(from, board), destination = coordinates(to, board);
   const start = squarePoint(rect, origin.file, origin.rank), end = squarePoint(rect, destination.file, destination.rank);
   pressDown(document.elementFromPoint(start.x, start.y) ?? board, start.x, start.y);
+  if (!animateMoves) {
+    const target = document.elementFromPoint(end.x, end.y) ?? board;
+    dispatchDragEvent(target, "pointermove", end.x, end.y);
+    dispatchDragEvent(target, "mousemove", end.x, end.y);
+    releaseDrag(document.elementFromPoint(end.x, end.y) ?? board, end.x, end.y);
+    return;
+  }
   await delay(varied(20, 35), signal);
   const distance = Math.hypot(end.x - start.x, end.y - start.y);
   const steps = Math.max(3, Math.min(5, Math.round(distance / 60)));
@@ -334,14 +341,14 @@ export async function resumePromotion(moveHint: string, signal: AbortSignal): Pr
   await choosePromotion(board, color, chosen.promotion!, serializePlacement(cells), signal);
 }
 
-/** Revalidates the position immediately before executing a suggested move. */
-export async function playMove(fen: string, move: string, signal: AbortSignal): Promise<boolean> {
+/** Revalidates a suggested move and applies it instantly unless animation is enabled. */
+export async function playMove(fen: string, move: string, signal: AbortSignal, animateMoves = false): Promise<boolean> {
   signal.throwIfAborted();
   const board = getBoard();
   if (!board || !samePosition(readPosition() ?? "", fen) || !canPlay(fen)) return false;
   const chess = new Chess(fen);
   try { chess.move({ from: move.slice(0, 2), to: move.slice(2, 4), promotion: move[4] ?? "q" }); } catch { return false; }
-  await dragMove(board, move.slice(0, 2), move.slice(2, 4), signal);
+  await dragMove(board, move.slice(0, 2), move.slice(2, 4), signal, animateMoves);
   if (move[4]) {
     await choosePromotion(board, fen.split(" ")[1] as "w" | "b", move[4], chess.fen().split(" ")[0]!, signal);
   }

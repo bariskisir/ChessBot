@@ -15,8 +15,8 @@ interface EvalVars extends CSSProperties { "--bot-white"?: string | undefined }
 /** Maps engine status colors to SCSS tone names so TS never declares colors. */
 const STATUS_TONES: Record<string, string> = { "#9ca3af": "muted", "#10b981": "success", "#3b82f6": "info", "#ef4444": "danger", "#f59e0b": "warning", "#f97316": "ember" };
 
-/** Renders a compact labeled checkbox without changing its saved behavior. */
-function Toggle({ label, name, settings, change }: SettingProps & { label: string; name: "autoPlay" | "autoNewMatch" | "autoRematch" | "analyzeOpponent" | "averageMove" }) {
+/** Renders a compact checkbox for persisted automation and animation preferences. */
+function Toggle({ label, name, settings, change }: SettingProps & { label: string; name: "autoPlay" | "autoNewMatch" | "autoRematch" | "analyzeOpponent" | "averageMove" | "animateMoves" }) {
   return <div className="bot-setting-item"><label className="bot-checkbox-label"><input type="checkbox" checked={settings[name]} onChange={
     /** Saves the selected automation preference. */
     (event) => change({ [name]: event.target.checked })} /><span>{label}</span></label></div>;
@@ -62,7 +62,7 @@ function Evaluation({ state }: { state: PanelState }) {
   </div>;
 }
 
-/** Keeps the compact layout, controls, advanced section, and persisted dragging. */
+/** Keeps analysis, animation controls, and persisted panel dragging together. */
 export function App() {
   const [state, setState] = useState<PanelState>({ settings: DEFAULT_SETTINGS, loaded: false, running: false, fen: "", move: "---", evaluation: undefined, status: "Waiting...", color: "#9ca3af", player: "w" });
   const [advanced, setAdvanced] = useState(false);
@@ -129,6 +129,7 @@ export function App() {
       <Toggle label="AUTO REMATCH" name="autoRematch" {...controls} />
       <Toggle label="ANALYZE OPPONENT" name="analyzeOpponent" {...controls} />
       <Toggle label="AVERAGE MOVE" name="averageMove" {...controls} />
+      <Toggle label="ANIMATE MOVES" name="animateMoves" {...controls} />
       <Slider label="MISTAKE" name="mistakeProbability" max={100} suffix="%" {...controls} />
       <Slider label="VARIATIONS" name="lines" min={1} max={10} {...controls} />
       <Slider label="DEPTH" name="depth" min={1} max={30} {...controls} />

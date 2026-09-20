@@ -9,7 +9,7 @@ import { chromium, expect, type Page } from "@playwright/test";
 import type {} from "../tests/board-fixture";
 declare global { interface Window { ChessbotBoardTest: typeof import("../src/board") } }
 
-/** Exercises queen and underpromotion gestures, delayed choosers, interruption, and stuck-window recovery. */
+/** Exercises instant and animated promotions, delayed choosers, interruption, and recovery. */
 async function verifyPromotions(page: Page): Promise<void> {
   const harness = await build({ entryPoints: ["src/board.ts"], bundle: true, write: false, format: "iife", globalName: "ChessbotBoardTest", target: "chrome120" });
   await page.addScriptTag({ content: harness.outputFiles[0]!.text });
@@ -20,8 +20,8 @@ async function verifyPromotions(page: Page): Promise<void> {
       ({ fen, piece }) => { window.chessbotFixture.setFen(fen); window.chessbotFixture.configurePromotion(piece === "q" ? 3300 : 0); }, { fen, piece });
     await expectFen(page, fen);
     const accepted = await page.evaluate(
-      /** Applies the requested promotion through the production board adapter. */
-      ({ fen, piece }) => window.ChessbotBoardTest.playMove(fen, `a7a8${piece}`, AbortSignal.timeout(10000)), { fen, piece });
+      /** Exercises instant and animated promotions through the production board adapter. */
+      ({ fen, piece }) => window.ChessbotBoardTest.playMove(fen, `a7a8${piece}`, AbortSignal.timeout(10000), piece === "r"), { fen, piece });
     assert.equal(accepted, true);
     await expect(page.locator(`.piece.w${piece}.square-18`)).toHaveCount(1);
     await expect(page.locator(".promotion-window")).toHaveCount(0);
@@ -170,7 +170,8 @@ try {
   await page.getByRole("button", { name: "Toggle Settings" }).click();
   await expect(page.locator("#bot-engine-select")).toHaveCount(0);
   await expect(page.locator("#bot-fen-text")).toHaveCount(0);
-  for (const name of ["AUTO PLAY", "AUTO NEW MATCH", "AUTO REMATCH", "ANALYZE OPPONENT", "AVERAGE MOVE"]) await expect(page.getByLabel(name, { exact: true })).toBeVisible();
+  for (const name of ["AUTO PLAY", "AUTO NEW MATCH", "AUTO REMATCH", "ANALYZE OPPONENT", "AVERAGE MOVE", "ANIMATE MOVES"]) await expect(page.getByLabel(name, { exact: true })).toBeVisible();
+  await expect(page.getByLabel("ANIMATE MOVES", { exact: true })).not.toBeChecked();
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveAttribute("max", "10");
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveAttribute("step", "0.1");
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toBeDisabled();
@@ -231,7 +232,8 @@ try {
   await count(page, "rematches", 1);
   await page.getByRole("button", { name: "STOP", exact: true }).click();
 
-  // Restore and persist slider values and the dragged panel position.
+  // Persist animation alongside slider values and the dragged panel position.
+  await page.getByLabel("ANIMATE MOVES", { exact: true }).check();
   await setRange(page, "MISTAKE", "70");
   await setRange(page, "RANDOM DELAY", "3.4");
   const header = await page.locator(".bot-panel-header").boundingBox();
@@ -248,6 +250,7 @@ try {
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveValue("3.4");
   await expect(page.getByLabel("AUTO NEW MATCH", { exact: true })).toBeChecked();
   await expect(page.getByLabel("AUTO REMATCH", { exact: true })).toBeChecked();
+  await expect(page.getByLabel("ANIMATE MOVES", { exact: true })).toBeChecked();
   const restored = await page.locator("#bot-overlay-panel").boundingBox();
   assert.ok(moved && restored && Math.abs(moved.x - restored.x) < 2 && Math.abs(moved.y - restored.y) < 2);
   await setRange(page, "MISTAKE", "0");

@@ -8,7 +8,7 @@ ChessBot is a **Chrome Manifest V3 extension** that adds a floating analysis pan
 **Chess.com**. The panel analyses the current board with a **local Stockfish 18 WASM**
 engine and can optionally play moves and start follow-up games automatically.
 
-- Version: `2.0.2` (see `package.json` and `public/manifest.json`).
+- Version: `2.1.0` (see `package.json` and `public/manifest.json`).
 - Engine is **100% local**. There is no remote engine, no API key, no engine selector,
   and no network calls for analysis.
 - The overlay behaves the **same regardless of opponent type** (computer bot or human).

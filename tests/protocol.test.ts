@@ -4,7 +4,7 @@ import test from "node:test";
 import { Chess } from "chess.js";
 import { DEFAULT_SETTINGS, normalizeSettings, parseInfo } from "../src/shared";
 
-/** Ensures corrupt and obsolete settings cannot select a remote engine. */
+/** Rejects corrupt settings and keeps move animation opt-in for saved preferences. */
 function settingsValidation(): void {
   assert.deepEqual(normalizeSettings(null), DEFAULT_SETTINGS);
   assert.equal(DEFAULT_SETTINGS.depth, 10);
@@ -15,6 +15,9 @@ function settingsValidation(): void {
   assert.equal(DEFAULT_SETTINGS.mistakeProbability, 20);
   assert.equal(DEFAULT_SETTINGS.lines, 10);
   assert.equal(DEFAULT_SETTINGS.averageMove, true);
+  assert.equal(DEFAULT_SETTINGS.animateMoves, false);
+  assert.equal(normalizeSettings({ animateMoves: true }).animateMoves, true);
+  assert.equal(normalizeSettings({ animateMoves: "true" }).animateMoves, false);
   assert.deepEqual(normalizeSettings({ depth: Infinity, time: -2, lines: 99, autoPlayDelay: NaN, autoPlay: "true", engineType: "api" }), { ...DEFAULT_SETTINGS, lines: 10 });
   assert.equal(normalizeSettings({ lines: -3 }).lines, 1);
   const restored = normalizeSettings({ autoPlay: false, autoNewMatch: true, autoRematch: true, autoPlayDelay: 10000, mistakeProbability: 90, panelPos: { top: "82px", left: "330px" } });
