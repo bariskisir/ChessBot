@@ -21,9 +21,9 @@ function label(button: HTMLElement): string {
   return (button.innerText || button.textContent || "").trim();
 }
 
-/** Finds the new-match control, including time-control labels like "New 1 + 1". */
+/** Finds regular and arena new-match controls while excluding arena search indicators. */
 function findNewButton(): HTMLElement | null {
-  const legacy = visible('[data-cy="game-over-modal-new-game-button"], [data-cy="next-arena-game-button"]');
+  const legacy = visible('[data-cy="game-over-modal-new-game-button"], [data-cy="next-arena-game-button"], .game-over-arena-button-component button.game-over-arena-button-button:not(.game-over-arena-button-finding)');
   if (legacy) return legacy;
   const scoped = document.querySelectorAll<HTMLElement>(
     ".game-over-modal-shell-buttons button, .game-over-secondary-actions-row-component button, .game-over-modal-component button, .board-modal-component button",

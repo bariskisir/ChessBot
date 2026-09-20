@@ -13,6 +13,7 @@ declare global { interface Window { ChessbotBoardTest: typeof import("../src/boa
 async function verifyPromotions(page: Page): Promise<void> {
   const harness = await build({ entryPoints: ["src/board.ts"], bundle: true, write: false, format: "iife", globalName: "ChessbotBoardTest", target: "chrome120" });
   await page.addScriptTag({ content: harness.outputFiles[0]!.text });
+  await verifyPositionConsistency(page);
   const fen = "7k/P7/6K1/8/8/8/8/8 w - - 0 1";
   for (const piece of ["q", "r", "b", "n"]) {
     await page.evaluate(
@@ -67,6 +68,33 @@ async function verifyPromotions(page: Page): Promise<void> {
   await page.evaluate(
     /** Restores the normal board and counters after promotion regressions. */
     () => { window.chessbotFixture.setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"); window.chessbotFixture.resetCounters(); });
+}
+
+/** Rejects partial board updates until the visible move list agrees with the pieces. */
+async function verifyPositionConsistency(page: Page): Promise<void> {
+  const game = new Chess();
+  game.move("e4");
+  const before = game.fen();
+  game.move("e5");
+  const after = game.fen();
+  const positions = await page.evaluate(
+    /** Reproduces pieces arriving before their corresponding move-list update. */
+    ({ before, after }) => {
+      const history = document.createElement("wc-simple-move-list");
+      history.innerHTML = '<span class="node white-move">e4</span>';
+      document.body.append(history);
+      try {
+        window.chessbotFixture.setFen(before);
+        const initial = window.ChessbotBoardTest.readPosition();
+        window.chessbotFixture.setFen(after);
+        const partial = window.ChessbotBoardTest.readPosition();
+        history.insertAdjacentHTML("beforeend", '<span class="node black-move">e5</span>');
+        return { initial, partial, complete: window.ChessbotBoardTest.readPosition() };
+      } finally { history.remove(); }
+    }, { before, after });
+  assert.equal(positions.initial, before);
+  assert.equal(positions.partial, null);
+  assert.equal(positions.complete, after);
 }
 
 /** Changes a range input through its native setter so React receives a real input event. */
@@ -142,6 +170,55 @@ async function verifyEvaluationUpdates(page: Page): Promise<void> {
   }
 }
 
+/** Verifies both selection modes honor mistake probability and the configurable advantage gate. */
+async function verifyMistakes(page: Page): Promise<void> {
+  for (const winning of [true, false]) {
+    await page.evaluate(
+      /** Covers a queen advantage and an equal starting position with the same controls. */
+      (winning) => window.chessbotFixture.setFen(winning ? "rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" : "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"), winning);
+    for (const average of [true, false]) {
+      await page.getByLabel("AVERAGE MOVE", { exact: true }).setChecked(average);
+      await setRange(page, "MISTAKE", "100");
+      await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toBeEnabled();
+      await setRange(page, "EVAL THRESHOLD", winning ? "1.5" : "0");
+      await page.getByRole("status").evaluate(
+        /** Records short-lived searches so a safe fallback cannot hide a skipped attempt. */
+        (element) => {
+          element.setAttribute("data-mistake-attempted", "false");
+          const observer = new MutationObserver(
+            /** Disconnects once the search is observed or the test stops the controller. */
+            () => {
+              if (element.textContent === "Attempting to find mistake...") { element.setAttribute("data-mistake-attempted", "true"); observer.disconnect(); }
+              else if (element.textContent === "Stopped") observer.disconnect();
+            });
+          observer.observe(element, { childList: true, characterData: true, subtree: true });
+        });
+      await page.getByRole("button", { name: "START", exact: true }).click();
+      await expect(page.getByRole("status")).toHaveAttribute("data-mistake-attempted", "true", { timeout: 25000 });
+      await expect(page.getByRole("status")).toHaveText(winning ? /^(Mistake Mode!|Suboptimal Mode)$/ : /^(Mistake Mode!|Suboptimal Mode|Analyzing Board)$/, { timeout: 25000 });
+      if (winning) await expect(page.locator('.highlight[data-tone="ideal"], .highlight[data-tone="suboptimal"]')).toHaveCount(2);
+      await page.getByRole("button", { name: "STOP", exact: true }).click();
+      if (!winning) {
+        await setRange(page, "EVAL THRESHOLD", "4");
+        await page.getByRole("button", { name: "START", exact: true }).click();
+        await expect(page.getByRole("status")).toHaveText("Analyzing Board", { timeout: 25000 });
+        await page.getByRole("button", { name: "STOP", exact: true }).click();
+      }
+      await setRange(page, "MISTAKE", "0");
+      await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toBeDisabled();
+      await page.getByRole("button", { name: "START", exact: true }).click();
+      await expect(page.getByRole("status")).toHaveText("Analyzing Board", { timeout: 25000 });
+      await page.getByRole("button", { name: "STOP", exact: true }).click();
+    }
+  }
+  await setRange(page, "MISTAKE", "5");
+  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toBeEnabled();
+  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveValue("4");
+  await setRange(page, "EVAL THRESHOLD", "1.5");
+  await setRange(page, "MISTAKE", "0");
+  await page.getByLabel("AVERAGE MOVE", { exact: true }).check();
+}
+
 const fixture = await build({ entryPoints: ["tests/board-fixture.ts"], bundle: true, write: false, format: "iife", target: "chrome120", loader: { ".css": "text" } });
 const fixtureScript = fixture.outputFiles[0]!.text;
 const profile = await mkdtemp(resolve(tmpdir(), "chessbot-parity-"));
@@ -176,7 +253,31 @@ try {
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveAttribute("step", "0.1");
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toBeDisabled();
   await expect(page.getByLabel("MISTAKE", { exact: true })).toHaveAttribute("max", "100");
+  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveValue("1.5");
+  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toBeDisabled();
+  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveAttribute("min", "0");
+  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveAttribute("max", "4");
+  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveAttribute("step", "0.5");
   await expect(page.getByLabel("VARIATIONS", { exact: true })).toHaveAttribute("max", "10");
+  await expect(page.getByLabel("VARIATIONS", { exact: true })).toBeEnabled();
+  await setRange(page, "VARIATIONS", "4");
+  await page.getByLabel("AVERAGE MOVE", { exact: true }).uncheck();
+  await expect(page.getByLabel("VARIATIONS", { exact: true })).toBeDisabled();
+  await expect(page.getByLabel("VARIATIONS", { exact: true })).toHaveValue("1");
+  await expect(page.locator("#bot-move-display > .label")).toHaveText("BEST MOVE");
+  await page.getByLabel("AVERAGE MOVE", { exact: true }).check();
+  await expect(page.getByLabel("VARIATIONS", { exact: true })).toBeEnabled();
+  await expect(page.getByLabel("VARIATIONS", { exact: true })).toHaveValue("4");
+  await expect(page.locator("#bot-move-display > .label")).toHaveText("AVERAGE MOVE");
+  await setRange(page, "VARIATIONS", "10");
+  const rowsFit = await page.locator(".bot-toggle-slider-row").evaluateAll(
+    /** Keeps the paired labels and sliders inside the compact panel. */
+    (rows) => rows.every(
+      /** Checks every visible part of each row against its content bounds. */
+      (row) => [...row.querySelectorAll("label, span, input")].every(
+        /** Allows subpixel rounding without overlooking overflowing label text. */
+        (part) => part.getBoundingClientRect().right <= row.getBoundingClientRect().right + 1)));
+  assert.equal(rowsFit, true);
   await expect(page.getByLabel("DEPTH", { exact: true })).toHaveValue("6");
   await page.getByRole("button", { name: "START", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Analyzing Board", { timeout: 25000 });
@@ -187,6 +288,7 @@ try {
   await page.getByRole("button", { name: "STOP", exact: true }).click();
   await expect(page.locator(".highlight[data-tone]")).toHaveCount(0);
   await expect(page.locator("#best-move-text")).toHaveText("---");
+  await verifyMistakes(page);
   await verifyPromotions(page);
   await page.evaluate(
     /** Restores the initial board for the independent automation checks. */
@@ -232,9 +334,19 @@ try {
   await count(page, "rematches", 1);
   await page.getByRole("button", { name: "STOP", exact: true }).click();
 
+  // Arena results use a separate button container and include a hidden search indicator.
+  await page.evaluate(
+    /** Reproduces the arena controls without the optional data-cy attributes. */
+    () => window.chessbotFixture.gameOver(true, true));
+  await page.getByRole("button", { name: "START", exact: true }).click();
+  await count(page, "newMatches", 2);
+  await count(page, "rematches", 1);
+  await page.getByRole("button", { name: "STOP", exact: true }).click();
+
   // Persist animation alongside slider values and the dragged panel position.
   await page.getByLabel("ANIMATE MOVES", { exact: true }).check();
   await setRange(page, "MISTAKE", "70");
+  await setRange(page, "EVAL THRESHOLD", "3.5");
   await setRange(page, "RANDOM DELAY", "3.4");
   const header = await page.locator(".bot-panel-header").boundingBox();
   assert.ok(header);
@@ -247,6 +359,7 @@ try {
   await expect(page.getByRole("button", { name: "START", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Toggle Settings" }).click();
   await expect(page.getByLabel("MISTAKE", { exact: true })).toHaveValue("70");
+  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveValue("3.5");
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveValue("3.4");
   await expect(page.getByLabel("AUTO NEW MATCH", { exact: true })).toBeChecked();
   await expect(page.getByLabel("AUTO REMATCH", { exact: true })).toBeChecked();

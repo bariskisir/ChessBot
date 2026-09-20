@@ -30,6 +30,17 @@ function settingsValidation(): void {
 }
 test("settings reject corrupt values and remove legacy engine selection", settingsValidation);
 
+/** Preserves half-pawn choices and migrates missing or invalid thresholds to the default. */
+function mistakeThresholds(): void {
+  assert.equal(normalizeSettings({}).mistakeThreshold, 1.5);
+  for (let threshold = 0; threshold <= 4; threshold += 0.5) assert.equal(normalizeSettings({ mistakeThreshold: threshold }).mistakeThreshold, threshold);
+  for (const threshold of [NaN, Infinity, "2", null]) assert.equal(normalizeSettings({ mistakeThreshold: threshold }).mistakeThreshold, 1.5);
+  assert.equal(normalizeSettings({ mistakeThreshold: -1 }).mistakeThreshold, 0);
+  assert.equal(normalizeSettings({ mistakeThreshold: 5 }).mistakeThreshold, 4);
+  assert.equal(normalizeSettings({ mistakeThreshold: 1.7 }).mistakeThreshold, 1.5);
+}
+test("mistake thresholds retain half-pawn steps and reject invalid preferences", mistakeThresholds);
+
 /** Confirms centipawn and mate scores remain White-relative on Black's turn. */
 function scores(): void {
   const game = new Chess();

@@ -8,7 +8,7 @@ ChessBot is a **Chrome Manifest V3 extension** that adds a floating analysis pan
 **Chess.com**. The panel analyses the current board with a **local Stockfish 18 WASM**
 engine and can optionally play moves and start follow-up games automatically.
 
-- Version: `2.1.0` (see `package.json` and `public/manifest.json`).
+- Version: `2.2.0` (see `package.json` and `public/manifest.json`).
 - Engine is **100% local**. There is no remote engine, no API key, no engine selector,
   and no network calls for analysis.
 - The overlay behaves the **same regardless of opponent type** (computer bot or human).
@@ -71,7 +71,13 @@ Content/UI flow (isolated world):
 
 Key behaviour in `src/controller.ts`:
 
-- A 300ms `poll()` tracks FEN/orientation and drives a small state machine.
+- A mutation observer tracks board/history/clock changes and coalesces checks into
+  animation frames; a 300ms `poll()` remains as a fallback. New positions must settle
+  across checks, and recorded history must agree with the visible pieces.
+- Stockfish stays alive between searches. Cancellation drains output through
+  `bestmove` before another search starts; stuck or failed workers are replaced.
+- Move confirmation releases input as soon as the position changes, with a 700ms
+  deadline for rejected input rather than an unconditional pause.
 - A single `AbortController` (`operation`) is replaced by `cancel()`; STOP, new
   settings, new positions, and game-over actions all cancel pending work.
 - `executing`/`gameAction` flags plus a `WeakSet` of handled buttons prevent repeat

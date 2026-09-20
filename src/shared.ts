@@ -3,7 +3,7 @@ export interface PanelPosition { top: string; left?: string; right?: string }
 export interface Settings {
   depth: number; time: number; lines: number; autoPlay: boolean;
   autoPlayDelay: number; autoNewMatch: boolean; autoRematch: boolean; analyzeOpponent: boolean;
-  averageMove: boolean; animateMoves: boolean; mistakeProbability: number; thinkingTime: number; panelPos: PanelPosition;
+  averageMove: boolean; animateMoves: boolean; mistakeProbability: number; mistakeThreshold: number; thinkingTime: number; panelPos: PanelPosition;
 }
 export interface Variation { depth: number; score: number; mate: number | null; moves: string[]; nodes: number }
 export interface Analysis { fen: string; bestMove: string; variations: Variation[] }
@@ -12,15 +12,15 @@ export type EngineResponse = { result: Analysis } | { error: string };
 export const DEFAULT_SETTINGS: Settings = {
   depth: 10, time: 0, lines: 10, autoPlay: true, autoPlayDelay: 300,
   autoNewMatch: true, autoRematch: false, analyzeOpponent: false, averageMove: true, animateMoves: false, mistakeProbability: 20,
-  thinkingTime: 100, panelPos: { top: "10px", right: "10px" },
+  mistakeThreshold: 1.5, thinkingTime: 100, panelPos: { top: "10px", right: "10px" },
 };
 
-/** Clamps finite numeric settings to their supported integer range. */
-function bounded(value: unknown, fallback: number, min: number, max: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.min(max, Math.round(value))) : fallback;
+/** Clamps finite settings and snaps them to the control's supported step. */
+function bounded(value: unknown, fallback: number, min: number, max: number, step = 1): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.min(max, Math.round(value / step) * step)) : fallback;
 }
 
-/** Rejects malformed preferences and defaults missing animation preferences to instant moves. */
+/** Aligns saved preferences to control steps and supplies defaults for missing controls. */
 export function normalizeSettings(value: unknown): Settings {
   const data = value && typeof value === "object" ? value as Partial<Settings> : {};
   const panelPos: PanelPosition = { top: positionValue(data.panelPos?.top, "10px") };
@@ -33,7 +33,8 @@ export function normalizeSettings(value: unknown): Settings {
     autoRematch: data.autoRematch === true, analyzeOpponent: data.analyzeOpponent === true,
     averageMove: typeof data.averageMove === "boolean" ? data.averageMove : true,
     animateMoves: data.animateMoves === true,
-    mistakeProbability: bounded(data.mistakeProbability, 20, 0, 100),
+    mistakeProbability: bounded(data.mistakeProbability, 20, 0, 100, 5),
+    mistakeThreshold: bounded(data.mistakeThreshold, 1.5, 0, 4, 0.5),
     thinkingTime: bounded(data.thinkingTime, 100, 1, 100), panelPos,
   };
 }

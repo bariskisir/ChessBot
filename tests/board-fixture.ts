@@ -140,25 +140,35 @@ async function openPromotion(from: string, to: string): Promise<void> {
   board.append(chooser);
 }
 
-/** Adds production-shaped game-over buttons and records their actual click behavior. */
-function gameOver(both: boolean): void {
+/** Adds regular or arena result controls and records their actual click behavior. */
+function gameOver(both: boolean, arena = false): void {
   for (const element of document.querySelectorAll(".fixture-action")) element.remove();
   const shell = document.createElement("div");
-  shell.className = "fixture-action game-over-modal-shell-buttons";
+  shell.className = arena ? "fixture-action board-modal-component" : "fixture-action game-over-modal-shell-buttons";
   const row = document.createElement("div");
-  row.className = "game-over-secondary-actions-row-component";
+  row.className = arena ? "game-over-arena-button-component" : "game-over-secondary-actions-row-component";
   shell.append(row);
   if (both) {
     const next = document.createElement("button");
     next.className = "cc-button-component cc-button-secondary cc-button-large cc-bg-secondary";
+    if (arena) next.classList.add("game-over-arena-button-button");
     next.type = "button";
     const nextLabel = document.createElement("span");
-    nextLabel.textContent = "New 1 + 1";
+    nextLabel.textContent = arena ? "Next Arena Game" : "New 1 + 1";
     next.append(nextLabel);
     /** Records a new-match action and resets the fixture board. */
     function newClick(): void { counters.newMatches++; finishGame(); }
     next.onclick = newClick;
     row.append(next);
+    if (arena) {
+      const finding = document.createElement("button");
+      finding.className = "game-over-arena-button-button game-over-arena-button-finding";
+      finding.textContent = "Finding Next Game...";
+      finding.hidden = true;
+      /** Makes an accidental click on the search indicator fail the match-count assertion. */
+      finding.onclick = () => { counters.newMatches += 100; };
+      row.prepend(finding);
+    }
   }
   const rematch = document.createElement("button");
   rematch.className = "cc-button-component cc-button-secondary cc-button-large cc-bg-secondary";

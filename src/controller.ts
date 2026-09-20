@@ -24,12 +24,37 @@ export class Controller {
   private disposed = false;
   private handledButtons = new WeakSet<HTMLElement>();
   private promotionFailed = false;
+  private observer: MutationObserver;
+  private frame = 0;
+  private candidatePosition = "";
 
-  /** Starts passive board tracking and restores user preferences. */
+  /** Observes visible board changes immediately, with periodic tracking as a fallback. */
   constructor(private readonly render: (state: PanelState) => void) {
+    this.observer = new MutationObserver(this.onBoardMutation);
+    this.observer.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class", "data-figurine"] });
     this.timer = setInterval(this.poll, 300);
     void this.initialize();
   }
+
+  /** Coalesces related piece, move-list, and clock updates into one frame. */
+  private schedulePoll = (): void => {
+    if (!this.disposed && !this.frame) this.frame = requestAnimationFrame(this.onBoardFrame);
+  };
+
+  /** Releases the scheduled frame before checking or stabilizing a new position. */
+  private onBoardFrame = (): void => { this.frame = 0; this.poll(); };
+
+  /** Ignores unrelated page activity while detecting board replacement and turn changes. */
+  private onBoardMutation = (records: MutationRecord[]): void => {
+    const selector = "wc-chess-board, chess-board, wc-simple-move-list, #board-layout-player-bottom, #board-layout-player-top";
+    for (const record of records) {
+      const target = record.target instanceof Element ? record.target : record.target.parentElement;
+      if (target?.closest(selector)) { this.schedulePoll(); return; }
+      for (const node of [...record.addedNodes, ...record.removedNodes]) {
+        if (node instanceof Element && (node.matches(selector) || node.querySelector(selector))) { this.schedulePoll(); return; }
+      }
+    }
+  };
 
   /** Loads persisted preferences without starting analysis automatically. */
   private async initialize(): Promise<void> {
@@ -56,6 +81,7 @@ export class Controller {
     this.operation = new AbortController();
     this.gameAction = false;
     this.executing = false;
+    this.candidatePosition = "";
     clearHighlights();
     void stopAnalysis();
   }
@@ -91,7 +117,7 @@ export class Controller {
     void this.persist();
   };
 
-  /** Tracks new positions, orientation changes, and game-over actions. */
+  /** Requires a new position to settle across frames before starting immediate analysis. */
   private poll = (): void => {
     if (this.disposed || !this.state.loaded) return;
     const fen = readPosition() ?? "", player = userColor();
@@ -115,12 +141,20 @@ export class Controller {
       return;
     }
     if (!fen || boardBusy()) {
+      this.candidatePosition = "";
       if (this.lastPosition) { this.cancel(); this.lastPosition = ""; }
       this.patch({ status: getBoard() ? "Waiting for board position..." : "Waiting for board...", color: "#f59e0b" });
       return;
     }
     const key = `${fen}:${player}`;
     if (key === this.lastPosition) return;
+    if (key !== this.candidatePosition) {
+      this.cancel();
+      this.lastPosition = "";
+      this.candidatePosition = key;
+      this.schedulePoll();
+      return;
+    }
     this.cancel();
     this.lastPosition = key;
     void this.analyze(fen, player, this.operation.signal);
@@ -154,16 +188,16 @@ export class Controller {
     } finally { if (!signal.aborted) this.executing = false; }
   }
 
-  /** Selects a playable move and honors the configured auto-play delay and animation preference. */
+  /** Applies the configured mistake threshold independently of the base selection mode. */
   private async analyze(fen: string, player: "w" | "b", signal: AbortSignal): Promise<void> {
     const settings = this.state.settings;
     try {
-      await delay(400, signal);
+      signal.throwIfAborted();
       const chess = new Chess(fen);
       if (chess.isGameOver()) { this.patch({ status: chess.isCheckmate() ? "Checkmate" : "Game Over - Draw", color: "#9ca3af" }); return; }
       this.patch({ status: "Thinking...", color: "#3b82f6" });
       const started = Date.now();
-      const result = await analyzePosition(fen, settings, signal);
+      const result = await analyzePosition(fen, { ...settings, lines: settings.averageMove ? settings.lines : 1 }, signal);
       await delay(Math.max(0, settings.thinkingTime - (Date.now() - started)), signal);
       if (!samePosition(readPosition() ?? "", fen) || userColor() !== player) return;
       const evaluation = result.variations[0];
@@ -173,9 +207,10 @@ export class Controller {
       let mistake: "ideal" | "suboptimal" | undefined;
       if (playerTurn && settings.averageMove) {
         move = chooseAverageMove(result.variations, player) ?? move;
-      } else if (playerTurn && playerScore(evaluation, player) > 1.5 && Math.random() * 100 < settings.mistakeProbability) {
+      }
+      if (playerTurn && evaluation && playerScore(evaluation, player) >= settings.mistakeThreshold && Math.random() * 100 < settings.mistakeProbability) {
         this.patch({ status: "Attempting to find mistake...", color: "#f59e0b" });
-        const candidate = await findMistake(fen, player, settings, signal, move);
+        const candidate = await findMistake(fen, player, settings, signal, result.bestMove);
         if (candidate) { move = candidate.move; mistake = candidate.type; }
       }
       signal.throwIfAborted();
@@ -190,15 +225,20 @@ export class Controller {
       this.executing = true;
       if (!await playMove(fen, move, signal, settings.animateMoves)) return;
       if (mistake) highlight(move, mistake);
-      await delay(700, signal);
+      const deadline = Date.now() + 700;
+      while (Date.now() < deadline) {
+        const current = readPosition();
+        if (current && !boardBusy() && !samePosition(current, fen)) break;
+        await delay(25, signal);
+      }
       if (samePosition(readPosition() ?? "", fen)) this.patch({ status: "Move not accepted - press START to retry", color: "#f59e0b" });
     } catch (error) { if (!signal.aborted) this.reportError(error); }
-    finally { if (!signal.aborted) this.executing = false; }
+    finally { if (!signal.aborted) { this.executing = false; this.schedulePoll(); } }
   }
 
   /** Displays an actionable engine failure without dropping the panel. */
   private reportError(error: unknown): void { this.patch({ status: error instanceof Error ? error.message : String(error), color: "#ef4444" }); }
 
-  /** Releases tracking and every pending action when the React panel unmounts. */
-  dispose = (): void => { this.disposed = true; clearInterval(this.timer); this.cancel(); };
+  /** Releases observers, frame callbacks, and pending actions when the panel unmounts. */
+  dispose = (): void => { this.disposed = true; this.observer.disconnect(); cancelAnimationFrame(this.frame); clearInterval(this.timer); this.cancel(); };
 }
