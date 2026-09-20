@@ -191,12 +191,19 @@ function releaseDrag(target: Element, x: number, y: number): void {
   target.dispatchEvent(new MouseEvent("click", options));
 }
 
-/** Drags a piece along a curved path with human pacing instead of instant square clicks. */
+/** Keeps synthetic board gestures on the board while the traffic viewer overlaps it. */
+function dragTarget(board: HTMLElement, x: number, y: number): Element {
+  return document.elementsFromPoint(x, y).find(
+    /** Skips floating UI without losing the piece underneath it. */
+    (element) => board.contains(element)) ?? board;
+}
+
+/** Drags with human pacing while keeping the log viewer out of board gesture targets. */
 async function dragMove(board: HTMLElement, from: string, to: string, signal: AbortSignal): Promise<void> {
   const rect = board.getBoundingClientRect();
   const origin = coordinates(from, board), destination = coordinates(to, board);
   const start = squarePoint(rect, origin.file, origin.rank), end = squarePoint(rect, destination.file, destination.rank);
-  pressDown(document.elementFromPoint(start.x, start.y) ?? board, start.x, start.y);
+  pressDown(dragTarget(board, start.x, start.y), start.x, start.y);
   await delay(varied(20, 35), signal);
   const distance = Math.hypot(end.x - start.x, end.y - start.y);
   const steps = Math.max(3, Math.min(5, Math.round(distance / 60)));
@@ -209,12 +216,12 @@ async function dragMove(board: HTMLElement, from: string, to: string, signal: Ab
     const t = step / steps, inverse = 1 - t;
     const x = inverse * inverse * start.x + 2 * inverse * t * control.x + t * t * end.x + varied(-1.5, 1.5);
     const y = inverse * inverse * start.y + 2 * inverse * t * control.y + t * t * end.y + varied(-1.5, 1.5);
-    const target = document.elementFromPoint(x, y) ?? board;
+    const target = dragTarget(board, x, y);
     dispatchDragEvent(target, "pointermove", x, y);
     dispatchDragEvent(target, "mousemove", x, y);
     await delay(varied(10, 15), signal);
   }
-  releaseDrag(document.elementFromPoint(end.x, end.y) ?? board, end.x, end.y);
+  releaseDrag(dragTarget(board, end.x, end.y), end.x, end.y);
 }
 
 /** Sends the full input sequence required by promotion choices. */

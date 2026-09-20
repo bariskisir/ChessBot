@@ -5,12 +5,14 @@ Guidance for AI coding agents working in this repository. Read this before chang
 ## What this project is
 
 ChessBot is a **Chrome Manifest V3 extension** that adds a floating analysis panel to
-**Chess.com**. The panel analyses the current board with a **local Stockfish 18 WASM**
-engine and can optionally play moves and start follow-up games automatically.
+**Chess.com**. The panel uses **local Stockfish 18 WASM** analysis or **OpenRouter Jev**
+move decisions and can optionally play moves and start follow-up games automatically.
 
 - Version: `2.0.2` (see `package.json` and `public/manifest.json`).
-- Engine is **100% local**. There is no remote engine, no API key, no engine selector,
-  and no network calls for analysis.
+- Engines: **stockfish-18** runs locally; **openrouter-jev** sends FEN and legal moves
+  to OpenRouter Decisions using `~typesafe/jev-latest` and a locally saved API key.
+  Jev never invokes Stockfish, analyzes opponents, or uses depth, variations,
+  evaluation scores, average moves or mistake mode.
 - The overlay behaves the **same regardless of opponent type** (computer bot or human).
   Do **not** reintroduce route/path gating such as `/play/(computer|bots)` checks.
 - Stack: React 19 + TypeScript + SCSS (compiled to text and injected into a shadow root),
@@ -47,7 +49,7 @@ Three browser entry points are bundled into `dist/`:
 
 | Source | Output | Role |
 | --- | --- | --- |
-| `src/background.ts` | `background.js` | MV3 service worker. Ensures the offscreen document exists and routes document-scoped engine requests to it, tagging each request with a per-tab `owner`. |
+| `src/background.ts` | `background.js` | MV3 service worker. Routes document-scoped requests to the local Stockfish offscreen host or the Jev API, with per-owner cancellation. |
 | `src/engine.ts` | `offscreen.js` | Runs inside the offscreen document. Owns the Stockfish worker, a job queue, per-owner cancellation, a 20s watchdog, depth/movetime limits, MultiPV, and UCI identity verification (`id name Stockfish 18`). |
 | `src/content.ts` | `content.js` | Isolated world. Calls `mount()`. |
 
@@ -57,6 +59,8 @@ Content/UI flow (isolated world):
   `src/app.tsx` (React panel) → `src/controller.ts` (behaviour).
 - `src/engine-client.ts` talks to `background` via `chrome.runtime.sendMessage`
   (`analyzePosition`, `stopAnalysis`, and an abortable `delay`).
+- `src/jev.ts` creates a legal UCI move Choice from the FEN and validates the
+  OpenRouter decision. It produces no evaluation or principal variations.
 - `src/shared.ts` holds protocol/types, `DEFAULT_SETTINGS`, `normalizeSettings`, and
   `parseInfo` (UCI → Variation, scores normalised to White).
 - `src/storage.ts` persists `Settings` in `chrome.storage.local` and migrates the
@@ -130,7 +134,8 @@ These are enforced by `scripts/check-comments.ts` and `tsc`:
 - Runtime deps: `chess.js`, `react`, `react-dom` only. Do not add libraries without a
   clear need; this project intentionally has no UI framework beyond React and no CSS
   framework.
-- Keep the engine local-only and the extension free of remote code.
+- Keep Stockfish local and the extension free of remote executable code. Jev uses
+  the OpenRouter Decisions API from the background service worker.
 - ChessBot application code is MIT (`LICENSE`); Stockfish remains GPL-3.0.
 
 ## Scope and ethics

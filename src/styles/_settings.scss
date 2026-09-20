@@ -43,6 +43,18 @@
 }
 
 .bot-setting-item {
+  select, input[type="password"] {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 5px;
+    border: 1px solid $border;
+    border-radius: 4px;
+    background: $surface;
+    color: $accent;
+    font: inherit;
+  }
+
+  .bot-engine-note { color: $muted; font-size: $detail-size; overflow-wrap: anywhere; }
   margin: 0;
   padding: 4px 0;
 

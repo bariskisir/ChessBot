@@ -17,7 +17,8 @@ The primary goal of this extension is **education through observation**.
 
 ## ✨ Key Features
 
-*   **Local Stockfish 18**: Runs entirely in your browser via WASM. There is no remote engine or API configuration, and all calculations stay on your device.
+*   **stockfish-18**: The default engine runs entirely in your browser via WASM, works offline, and keeps its calculations on your device.
+*   **openrouter-jev**: Uses OpenRouter's `~typesafe/jev-latest` Decisions API to choose one move from the complete legal move list for the current FEN. Only the player's turn is analyzed. Stockfish never runs for Jev requests; depth, variations, evaluation, opponent analysis, average moves and mistake mode are unavailable in this mode.
 *   **Real-time Evaluation Bar**: A dynamic, responsive eval bar that shows the advantage from the current player's perspective.
 *   **Auto Play Mode**: Automatically execute engine moves with a customizable random delay to simulate match flows.
 *   **Auto New Match & Auto Rematch**: Detect game over and start the next game automatically, with 2.5-second delays.
@@ -52,6 +53,12 @@ Then load the generated `dist` directory as an unpacked extension.
 3.  Click **START** to begin board detection and analysis.
 4.  Toggle **AUTO PLAY** if you want the bot to make moves automatically (ideal for engine-vs-bot matches).
 5.  Use the **Advanced Settings** (arrow icon) to adjust Auto New Match, Auto Rematch, average move selection, random delay, mistake probability, engine variations (MultiPV), and depth.
+
+To use Jev, open Advanced Settings, choose **openrouter-jev** under **ENGINE**, enter your **OPENROUTER API KEY**, and click **START**. Enable **AUTO PLAY** to execute its selected move. The key is saved in local extension storage (not encrypted or synced). Jev sends the FEN and legal moves to OpenRouter and requires internet access and API credit. It makes a structured move decision rather than a Stockfish search; no centipawn evaluation is shown. Invalid decisions and API errors stop that position's action; press STOP and START to retry. STOP, engine changes and position changes cancel pending requests and prevent late moves. The local **stockfish-18** engine requires no key.
+
+The request uses TypeSafe's [Choice format](https://docs.typesafe.ai/primitives/choice) through OpenRouter's Decisions endpoint, with the [Jev Latest alias](https://openrouter.ai/~typesafe/jev-latest).
+
+Open Advanced Settings with the arrow and click **jev-logs** at the bottom of that menu. A log panel with 25% more width and height than the main panel opens immediately to its left and moves with it. **Request** and **Response** expand to show their headers and formatted JSON bodies; Response is open by default. Probability maps are displayed from highest to lowest without modifying the captured response. Logging continues while the viewer is closed. **Auto-follow**, beside **Next**, selects the newest call by default; **Previous** and **Next** pause following for manual inspection. API keys are masked before logs leave the background worker, including keys echoed in response bodies. Every call is saved per tab in extension session storage with no count limit, so page refreshes preserve its history during the browser session. The footer totals reported usage costs in USD across all saved calls. The trash icon clears the history and its total, including suppression of late responses for deleted calls. Failed and canceled calls remain available until cleared.
 
 ## 💡 Optimal Settings for Auto Features
 

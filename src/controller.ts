@@ -1,4 +1,4 @@
-/** Coordinates panel behavior with cancelable local analysis and automation. */
+/** Coordinates panel behavior with cancelable engine decisions and automation. */
 import { Chess } from "chess.js";
 import { boardBusy, canPlay, canResumePromotion, clearHighlights, getBoard, highlight, playMove, readPosition, resumePromotion, samePosition, userColor } from "./board";
 import { findGameAction, type GameAction } from "./automation";
@@ -76,9 +76,9 @@ export class Controller {
     this.patch({ running: false, move: "---", status: "Stopped", color: "#ef4444" });
   };
 
-  /** Applies a changed setting and restarts the current calculation if needed. */
+  /** Applies engine preferences and clears stale results before restarting analysis. */
   updateSettings = (update: Partial<Settings>): void => {
-    this.patch({ settings: normalizeSettings({ ...this.state.settings, ...update }) });
+    this.patch({ settings: normalizeSettings({ ...this.state.settings, ...update }), evaluation: undefined, move: "---" });
     void this.persist();
     this.cancel();
     this.lastPosition = "";
@@ -154,26 +154,30 @@ export class Controller {
     } finally { if (!signal.aborted) this.executing = false; }
   }
 
-  /** Calculates a playable move and restores average selection, safe mistakes, and randomized auto play. */
+  /** Plays Jev's decision directly, applying score-based move selection only to Stockfish. */
   private async analyze(fen: string, player: "w" | "b", signal: AbortSignal): Promise<void> {
     const settings = this.state.settings;
     try {
       await delay(400, signal);
       const chess = new Chess(fen);
       if (chess.isGameOver()) { this.patch({ status: chess.isCheckmate() ? "Checkmate" : "Game Over - Draw", color: "#9ca3af" }); return; }
+      if (settings.engine === "openrouter-jev" && chess.turn() !== player) {
+        this.patch({ move: "---", evaluation: undefined, status: "Opponent's turn", color: "#9ca3af" });
+        return;
+      }
       this.patch({ status: "Thinking...", color: "#3b82f6" });
       const started = Date.now();
       const result = await analyzePosition(fen, settings, signal);
       await delay(Math.max(0, settings.thinkingTime - (Date.now() - started)), signal);
       if (!samePosition(readPosition() ?? "", fen) || userColor() !== player) return;
       const evaluation = result.variations[0];
-      if (evaluation) this.patch({ evaluation });
+      this.patch({ evaluation });
       const playerTurn = chess.turn() === player;
       let move = result.bestMove;
       let mistake: "ideal" | "suboptimal" | undefined;
-      if (playerTurn && settings.averageMove) {
+      if (settings.engine === "stockfish-18" && playerTurn && settings.averageMove) {
         move = chooseAverageMove(result.variations, player) ?? move;
-      } else if (playerTurn && playerScore(evaluation, player) > 1.5 && Math.random() * 100 < settings.mistakeProbability) {
+      } else if (settings.engine === "stockfish-18" && playerTurn && playerScore(evaluation, player) > 1.5 && Math.random() * 100 < settings.mistakeProbability) {
         this.patch({ status: "Attempting to find mistake...", color: "#f59e0b" });
         const candidate = await findMistake(fen, player, settings, signal, move);
         if (candidate) { move = candidate.move; mistake = candidate.type; }

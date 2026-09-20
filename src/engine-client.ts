@@ -1,17 +1,17 @@
-/** Provides a single local Stockfish transport for analysis and mistake searches. */
+/** Provides a shared transport for the selected analysis engine. */
 import type { Analysis, EngineResponse, Settings } from "./shared";
 
-/** Requests a local analysis and rejects canceled or malformed responses. */
+/** Requests the selected engine and rejects canceled or malformed responses. */
 export async function analyzePosition(fen: string, settings: Settings, signal: AbortSignal): Promise<Analysis> {
   signal.throwIfAborted();
   const response: EngineResponse = await chrome.runtime.sendMessage({ target: "background", action: "analyze", fen, settings });
   signal.throwIfAborted();
-  if (!response || "error" in response) throw new Error(response?.error ?? "No response from Stockfish.");
+  if (!response || "error" in response) throw new Error(response?.error ?? "No response from the selected engine.");
   if (response.result.fen !== fen) throw new Error("The analyzed position changed.");
   return response.result;
 }
 
-/** Cancels only this document's outstanding local searches. */
+/** Cancels only this document's outstanding engine requests. */
 export async function stopAnalysis(): Promise<void> {
   try { await chrome.runtime.sendMessage({ target: "background", action: "stop" }); } catch { /* The extension may be reloading. */ }
 }

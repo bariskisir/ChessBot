@@ -4,7 +4,7 @@ import test from "node:test";
 import { Chess } from "chess.js";
 import { DEFAULT_SETTINGS, normalizeSettings, parseInfo } from "../src/shared";
 
-/** Ensures corrupt and obsolete settings cannot select a remote engine. */
+/** Ensures corrupt and obsolete settings preserve safe defaults. */
 function settingsValidation(): void {
   assert.deepEqual(normalizeSettings(null), DEFAULT_SETTINGS);
   assert.equal(DEFAULT_SETTINGS.depth, 10);

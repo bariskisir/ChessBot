@@ -149,6 +149,135 @@ const extension = resolve("dist");
 const context = await chromium.launchPersistentContext(profile, { channel: "chromium", headless: true, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`], viewport: { width: 1000, height: 760 } });
 const errors: string[] = [];
 
+/** Verifies Jev autoplay, masked traffic history and STOP without a Stockfish host. */
+async function verifyJev(page: Page): Promise<void> {
+  const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker");
+  await worker.evaluate(
+    /** Installs a delayed decision fixture inside the service worker, preventing real API calls. */
+    () => {
+      const state = globalThis as typeof globalThis & { jevCalls: number; savedFetch: typeof fetch };
+      state.jevCalls = 0;
+      state.savedFetch = fetch;
+      /** Returns a legal fixture move even after cancellation to exercise late-response rejection. */
+      globalThis.fetch = async (_url, init) => {
+        state.jevCalls++;
+        const body = JSON.parse(String(init?.body));
+        if (body.model !== "~typesafe/jev-latest" || !body.questions.move.criteria.e2e4) throw new Error("Invalid Jev fixture request");
+        await new Promise(
+          /** Gives STOP time to cancel the in-flight decision. */
+          (resolve) => setTimeout(resolve, 800));
+        return Response.json({ answers: { move: { choice: "e2e4" } }, usage: { cost: 0.00012345 } });
+      };
+    });
+  await page.getByLabel("ENGINE", { exact: true }).selectOption("openrouter-jev");
+  for (const label of ["DEPTH", "VARIATIONS", "AVERAGE MOVE", "MISTAKE", "ANALYZE OPPONENT"]) await expect(page.getByLabel(label, { exact: true })).toHaveCount(0);
+  await expect(page.locator("#bot-eval-text")).toHaveCount(0);
+  await page.getByLabel("OPENROUTER API KEY", { exact: true }).fill("fixture-key");
+  await page.getByLabel("AUTO PLAY", { exact: true }).check();
+  await page.getByRole("button", { name: "jev-logs", exact: true }).click();
+  const logs = page.getByRole("complementary", { name: "Jev logs" });
+  await expect(logs.getByLabel("Request count")).toHaveText("0/0");
+  await expect(logs.getByLabel("Total cost")).toHaveText("Total cost: $0.00000000");
+  const mainBounds = await page.locator("#bot-overlay-panel").boundingBox();
+  const logBounds = await logs.boundingBox();
+  assert.ok(mainBounds && logBounds);
+  assert.ok(Math.abs(mainBounds.width * 1.25 - logBounds.width) < 1 && Math.abs(Math.min(mainBounds.height * 1.25, 760 - logBounds.y - 12) - logBounds.height) < 1);
+  assert.ok(Math.abs(mainBounds.y - logBounds.y) < 1 && Math.abs(mainBounds.x - logBounds.x - logBounds.width - 8) < 1);
+  await expect(page.getByRole("dialog", { name: "Jev logs" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Toggle Settings" }).click();
+  await expect(page.getByRole("button", { name: "jev-logs", exact: true })).toBeHidden();
+  await expect(logs).toBeVisible();
+  const collapsedLogBounds = await logs.boundingBox();
+  assert.ok(collapsedLogBounds && Math.abs(collapsedLogBounds.height - logBounds.height) < 1 && Math.abs(collapsedLogBounds.width - logBounds.width) < 1);
+  await page.getByRole("button", { name: "Toggle Settings" }).click();
+  const expandedLogBounds = await logs.boundingBox();
+  assert.ok(expandedLogBounds && Math.abs(expandedLogBounds.height - logBounds.height) < 1);
+  await page.getByRole("button", { name: "jev-logs", exact: true }).click();
+  await expect(logs).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "jev-logs", exact: true })).toHaveAttribute("aria-expanded", "false");
+  await page.getByRole("button", { name: "jev-logs", exact: true }).click();
+  await expect(logs).toBeVisible();
+  await page.getByRole("button", { name: "START", exact: true }).click();
+  await count(page, "moves", 1);
+  await expect(page.getByRole("status")).toHaveText("Opponent's turn");
+  await expect(logs).toBeVisible();
+  await expect(logs.getByLabel("Auto-follow")).toBeChecked();
+  await expect(logs.getByLabel("Request count")).toHaveText("1/1");
+  await expect(logs.getByLabel("Total cost")).toHaveText("Total cost: $0.00012345");
+  await expect(logs).toContainText("Bearer [REDACTED]");
+  await expect(logs).not.toContainText("fixture-key");
+  await expect(logs.locator('[data-log="request-body"]')).toContainText('"model": "~typesafe/jev-latest"');
+  await expect(logs.locator('[data-log="response-body"]')).toContainText('"choice": "e2e4"');
+  await expect(logs.locator("details[open] > summary")).toHaveText(["Response", "Body"]);
+  await expect(logs.locator('[data-log="request-body"]')).toBeHidden();
+  await logs.locator("summary").filter({ hasText: /^Request$/ }).click();
+  await logs.locator("details").filter({ has: page.locator(":scope > summary", { hasText: /^Request$/ }) }).locator("summary").filter({ hasText: /^Body$/ }).click();
+  await expect(logs.locator('[data-log="request-body"]')).toBeVisible();
+  await logs.locator("summary").filter({ hasText: /^Request$/ }).click();
+  await expect(logs.locator('[data-log="request-body"]')).toBeHidden();
+  await expect(logs.getByRole("button", { name: "Previous", exact: true })).toBeDisabled();
+  await logs.getByRole("button", { name: "Close Jev logs" }).click();
+  await page.waitForTimeout(1000);
+  assert.equal(await worker.evaluate(
+    /** Confirms the opponent position never reaches Jev despite its saved preference. */
+    () => (globalThis as typeof globalThis & { jevCalls: number }).jevCalls), 1);
+  assert.equal(await worker.evaluate(
+    /** Confirms Jev has never created the Stockfish offscreen document. */
+    () => chrome.offscreen.hasDocument()), false);
+  await page.getByRole("button", { name: "STOP", exact: true }).click();
+  await page.evaluate(
+    /** Resets the board for cancellation of a second decision. */
+    () => { window.chessbotFixture.setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"); window.chessbotFixture.resetCounters(); });
+  await page.getByRole("button", { name: "START", exact: true }).click();
+  await expect.poll(
+    /** Waits for the request to actually enter the transport before STOP. */
+    () => worker.evaluate(
+      /** Reads only the test request counter. */
+      () => (globalThis as typeof globalThis & { jevCalls: number }).jevCalls)).toBe(2);
+  await page.getByRole("button", { name: "jev-logs", exact: true }).click();
+  await expect(logs.getByLabel("Request count")).toHaveText("2/2");
+  await logs.getByRole("button", { name: "Close Jev logs" }).click();
+  await page.getByRole("button", { name: "STOP", exact: true }).click();
+  await page.waitForTimeout(1200);
+  await count(page, "moves", 0);
+  await page.getByRole("button", { name: "jev-logs", exact: true }).click();
+  await expect(logs.locator(".bot-log-meta")).toHaveCount(0);
+  await logs.getByRole("button", { name: "Previous", exact: true }).click();
+  await expect(logs.getByLabel("Request count")).toHaveText("1/2");
+  await expect(logs.getByLabel("Total cost")).toHaveText("Total cost: $0.00024690");
+  await expect(logs.getByLabel("Auto-follow")).not.toBeChecked();
+  await logs.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(logs.getByLabel("Request count")).toHaveText("2/2");
+  await logs.getByRole("button", { name: "Previous", exact: true }).click();
+  await logs.getByLabel("Auto-follow").check();
+  await expect(logs.getByLabel("Request count")).toHaveText("2/2");
+  await logs.getByRole("button", { name: "Close Jev logs" }).press("Escape");
+  await expect(logs).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "START", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Toggle Settings" }).click();
+  await expect(page.getByLabel("ENGINE", { exact: true })).toHaveValue("openrouter-jev");
+  await expect(page.getByLabel("OPENROUTER API KEY", { exact: true })).toHaveValue("fixture-key");
+  await page.getByRole("button", { name: "jev-logs", exact: true }).click();
+  await expect(logs.getByLabel("Request count")).toHaveText("2/2");
+  await expect(logs.getByLabel("Total cost")).toHaveText("Total cost: $0.00024690");
+  await logs.getByRole("button", { name: "Clear Jev logs" }).click();
+  await expect(logs.getByLabel("Request count")).toHaveText("0/0");
+  await expect(logs.getByLabel("Total cost")).toHaveText("Total cost: $0.00000000");
+  await page.reload();
+  await expect(page.getByRole("button", { name: "START", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Toggle Settings" }).click();
+  await page.getByRole("button", { name: "jev-logs", exact: true }).click();
+  await expect(logs.getByLabel("Request count")).toHaveText("0/0");
+  await logs.getByRole("button", { name: "Close Jev logs" }).click();
+  await page.getByLabel("OPENROUTER API KEY", { exact: true }).fill("");
+  await page.getByLabel("ENGINE", { exact: true }).selectOption("stockfish-18");
+  await page.getByLabel("AUTO PLAY", { exact: true }).uncheck();
+  await worker.evaluate(
+    /** Restores the service worker transport after the isolated provider fixture. */
+    () => { const state = globalThis as typeof globalThis & { savedFetch: typeof fetch }; globalThis.fetch = state.savedFetch; });
+}
+
 /** Opens an intercepted Chess.com computer page with real content scripts and a controllable board. */
 async function openBoard(): Promise<Page> {
   const page = await context.newPage();
@@ -168,7 +297,7 @@ try {
   await expect(page.locator("#best-move-text")).toHaveText("---");
   await expect(page.locator("#bot-eval-text")).toHaveText("0.00");
   await page.getByRole("button", { name: "Toggle Settings" }).click();
-  await expect(page.locator("#bot-engine-select")).toHaveCount(0);
+  await expect(page.getByLabel("ENGINE", { exact: true })).toHaveValue("stockfish-18");
   await expect(page.locator("#bot-fen-text")).toHaveCount(0);
   for (const name of ["AUTO PLAY", "AUTO NEW MATCH", "AUTO REMATCH", "ANALYZE OPPONENT", "AVERAGE MOVE"]) await expect(page.getByLabel(name, { exact: true })).toBeVisible();
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveAttribute("max", "10");
@@ -177,6 +306,7 @@ try {
   await expect(page.getByLabel("MISTAKE", { exact: true })).toHaveAttribute("max", "100");
   await expect(page.getByLabel("VARIATIONS", { exact: true })).toHaveAttribute("max", "10");
   await expect(page.getByLabel("DEPTH", { exact: true })).toHaveValue("6");
+  await verifyJev(page);
   await page.getByRole("button", { name: "START", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Analyzing Board", { timeout: 25000 });
   await expect(page.locator("#best-move-text")).toHaveText(/^[A-H][1-8][A-H][1-8][QRBN]?$/);
@@ -264,6 +394,11 @@ try {
   await page.setViewportSize({ width: 390, height: 760 });
   const compact = await page.locator("#bot-overlay-panel").boundingBox();
   assert.ok(compact && compact.x >= 0 && compact.x + compact.width <= 390);
+  await page.getByRole("button", { name: "jev-logs", exact: true }).click();
+  const compactLogs = await page.getByRole("complementary", { name: "Jev logs" }).boundingBox();
+  const compactMain = await page.locator("#bot-overlay-panel").boundingBox();
+  assert.ok(compactLogs && compactMain && compactLogs.x >= 0 && compactMain.x + compactMain.width <= 390);
+  assert.ok(Math.abs(compactLogs.width - compactMain.width * 1.25) < 1 && Math.abs(compactLogs.height - Math.min(compact.height * 1.25, 760 - compactLogs.y - 12)) < 1);
   assert.deepEqual(errors, []);
-  console.log("Passed: panel controls, best move, eval bar, highlights, actual auto play, STOP cancellation, rematch, new-match precedence, setting migration, saved dragging, offline engine, and tab isolation.");
+  console.log("Passed: panel controls, Jev decisions and masked logs, best move, eval bar, highlights, actual auto play, STOP cancellation, rematch, new-match precedence, setting migration, saved dragging, offline engine, and tab isolation.");
 } finally { await context.close(); }

@@ -1,8 +1,10 @@
-/** Renders the ChessBot window and every local-engine control in React. */
+/** Renders the ChessBot window with controls for the selected engine. */
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { Controller, type PanelState } from "./controller";
 import { DEFAULT_SETTINGS, type Settings, type PanelPosition } from "./shared";
 import icon from "../public/icons/icon.svg";
+import { JEV_MODEL } from "./jev";
+import { JevLogs } from "./jev-logs";
 
 interface SettingProps { settings: Settings; change: (update: Partial<Settings>) => void }
 
@@ -62,10 +64,11 @@ function Evaluation({ state }: { state: PanelState }) {
   </div>;
 }
 
-/** Keeps the compact layout, controls, advanced section, and persisted dragging. */
+/** Anchors the main panel and its adjacent traffic viewer to one draggable frame. */
 export function App() {
   const [state, setState] = useState<PanelState>({ settings: DEFAULT_SETTINGS, loaded: false, running: false, fen: "", move: "---", evaluation: undefined, status: "Waiting...", color: "#9ca3af", player: "w" });
   const [advanced, setAdvanced] = useState(false);
+  const [frame, setFrame] = useState<HTMLDivElement | null>(null);
   const [position, setPosition] = useState<PanelPosition | null>(null);
   const controller = useRef<Controller | null>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -117,21 +120,33 @@ export function App() {
   const style: PanelVars = { "--bot-top": saved.top, "--bot-right": saved.left ? "auto" : saved.right ?? "10px" };
   if (saved.left) style["--bot-left"] = saved.left;
   const controls = { settings: state.settings, change };
-  return <div id="bot-overlay-panel" ref={panel} data-anchored={saved.left ? "left" : "right"} style={style}>
+  return <div className="bot-panel-frame" ref={setFrame} data-anchored={saved.left ? "left" : "right"} style={style}><div id="bot-overlay-panel" ref={panel}>
     <div className="bot-panel-header" onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag}><h3><img src={icon} width="16" height="16" alt="" draggable={false} />CHESS.COM BOT<span className="bot-version">v{chrome.runtime.getManifest().version}</span></h3></div>
     <div className="bot-controls-row"><button id={state.running ? "bot-panel-stop" : "bot-panel-start"} className="bot-panel-btn" onClick={state.running ? stop : start} disabled={!state.loaded}>{state.running ? "STOP" : "START"}</button></div>
-    <div id="bot-move-display"><span className="label">BEST MOVE</span><span className="value" id="best-move-text">{state.move}</span><Evaluation state={state} /></div>
+    <div id="bot-move-display"><span className="label">BEST MOVE</span><span className="value" id="best-move-text">{state.move}</span>{state.settings.engine === "stockfish-18" && <Evaluation state={state} />}</div>
     <div id="bot-status-text" className="bot-status-text" data-tone={STATUS_TONES[state.color] ?? "muted"} role="status">{state.status}</div>
     <div id="bot-panel-footer"><button id="bot-advanced-toggle" className={advanced ? "open" : ""} title="Toggle Settings" aria-label="Toggle Settings" aria-expanded={advanced} aria-controls="bot-advanced-panel" onClick={toggleAdvanced}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6" /></svg></button></div>
     <div id="bot-advanced-panel" className={`bot-advanced-section ${advanced ? "open" : ""}`} hidden={!advanced}>
+      <div className="bot-setting-item"><label htmlFor="bot-engine">ENGINE</label><select id="bot-engine" value={state.settings.engine} onChange={
+        /** Switches providers and cancels any pending decision. */
+        (event) => change({ engine: event.target.value === "openrouter-jev" ? "openrouter-jev" : "stockfish-18" })}>
+        <option value="stockfish-18">stockfish-18</option><option value="openrouter-jev">openrouter-jev</option>
+      </select></div>
+      {state.settings.engine === "openrouter-jev" && <div className="bot-setting-item">
+        <label htmlFor="bot-openrouter-key">OPENROUTER API KEY</label><input id="bot-openrouter-key" type="password" autoComplete="off" spellCheck={false} value={state.settings.openRouterKey} onChange={
+          /** Saves the key locally and cancels work using the old credential. */
+          (event) => change({ openRouterKey: event.target.value })} />
+        <p className="bot-engine-note">{JEV_MODEL}. Key saved on this device. FEN and legal moves are sent to OpenRouter.</p>
+      </div>}
       <AutoPlay {...controls} />
       <Toggle label="AUTO NEW MATCH" name="autoNewMatch" {...controls} />
       <Toggle label="AUTO REMATCH" name="autoRematch" {...controls} />
-      <Toggle label="ANALYZE OPPONENT" name="analyzeOpponent" {...controls} />
-      <Toggle label="AVERAGE MOVE" name="averageMove" {...controls} />
+      {state.settings.engine === "stockfish-18" && <Toggle label="ANALYZE OPPONENT" name="analyzeOpponent" {...controls} />}
+      {state.settings.engine === "stockfish-18" && <><Toggle label="AVERAGE MOVE" name="averageMove" {...controls} />
       <Slider label="MISTAKE" name="mistakeProbability" max={100} suffix="%" {...controls} />
       <Slider label="VARIATIONS" name="lines" min={1} max={10} {...controls} />
-      <Slider label="DEPTH" name="depth" min={1} max={30} {...controls} />
+      <Slider label="DEPTH" name="depth" min={1} max={30} {...controls} /></>}
+      <JevLogs container={frame} />
     </div>
-  </div>;
+  </div></div>;
 }
