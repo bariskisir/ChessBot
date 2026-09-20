@@ -1,8 +1,10 @@
 /** Provides a single local Stockfish transport for analysis and mistake searches. */
 import type { Analysis, EngineResponse, Settings } from "./shared";
+let stopping: Promise<void> = Promise.resolve();
 
-/** Requests a local analysis and rejects canceled or malformed responses. */
+/** Waits for preceding STOP acknowledgements so they cannot cancel a newer search. */
 export async function analyzePosition(fen: string, settings: Settings, signal: AbortSignal): Promise<Analysis> {
+  await stopping;
   signal.throwIfAborted();
   const response: EngineResponse = await chrome.runtime.sendMessage({ target: "background", action: "analyze", fen, settings });
   signal.throwIfAborted();
@@ -11,9 +13,12 @@ export async function analyzePosition(fen: string, settings: Settings, signal: A
   return response.result;
 }
 
-/** Cancels only this document's outstanding local searches. */
-export async function stopAnalysis(): Promise<void> {
-  try { await chrome.runtime.sendMessage({ target: "background", action: "stop" }); } catch { /* The extension may be reloading. */ }
+/** Orders document cancellations before subsequent requests without waiting for engine draining. */
+export function stopAnalysis(): Promise<void> {
+  stopping = stopping.then(
+    /** Keeps cancellation ordering even while the background host is being created. */
+    async () => { try { await chrome.runtime.sendMessage({ target: "background", action: "stop" }); } catch { /* The extension may be reloading. */ } });
+  return stopping;
 }
 
 /** Waits for a delay while allowing STOP to immediately cancel pending actions. */

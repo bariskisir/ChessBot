@@ -13,6 +13,7 @@ declare global { interface Window { ChessbotBoardTest: typeof import("../src/boa
 async function verifyPromotions(page: Page): Promise<void> {
   const harness = await build({ entryPoints: ["src/board.ts"], bundle: true, write: false, format: "iife", globalName: "ChessbotBoardTest", target: "chrome120" });
   await page.addScriptTag({ content: harness.outputFiles[0]!.text });
+  await verifyPositionConsistency(page);
   const fen = "7k/P7/6K1/8/8/8/8/8 w - - 0 1";
   for (const piece of ["q", "r", "b", "n"]) {
     await page.evaluate(
@@ -67,6 +68,33 @@ async function verifyPromotions(page: Page): Promise<void> {
   await page.evaluate(
     /** Restores the normal board and counters after promotion regressions. */
     () => { window.chessbotFixture.setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"); window.chessbotFixture.resetCounters(); });
+}
+
+/** Rejects partial board updates until the visible move list agrees with the pieces. */
+async function verifyPositionConsistency(page: Page): Promise<void> {
+  const game = new Chess();
+  game.move("e4");
+  const before = game.fen();
+  game.move("e5");
+  const after = game.fen();
+  const positions = await page.evaluate(
+    /** Reproduces pieces arriving before their corresponding move-list update. */
+    ({ before, after }) => {
+      const history = document.createElement("wc-simple-move-list");
+      history.innerHTML = '<span class="node white-move">e4</span>';
+      document.body.append(history);
+      try {
+        window.chessbotFixture.setFen(before);
+        const initial = window.ChessbotBoardTest.readPosition();
+        window.chessbotFixture.setFen(after);
+        const partial = window.ChessbotBoardTest.readPosition();
+        history.insertAdjacentHTML("beforeend", '<span class="node black-move">e5</span>');
+        return { initial, partial, complete: window.ChessbotBoardTest.readPosition() };
+      } finally { history.remove(); }
+    }, { before, after });
+  assert.equal(positions.initial, before);
+  assert.equal(positions.partial, null);
+  assert.equal(positions.complete, after);
 }
 
 /** Changes a range input through its native setter so React receives a real input event. */
@@ -177,6 +205,25 @@ try {
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toBeDisabled();
   await expect(page.getByLabel("MISTAKE", { exact: true })).toHaveAttribute("max", "100");
   await expect(page.getByLabel("VARIATIONS", { exact: true })).toHaveAttribute("max", "10");
+  await expect(page.getByLabel("VARIATIONS", { exact: true })).toBeEnabled();
+  await setRange(page, "VARIATIONS", "4");
+  await page.getByLabel("AVERAGE MOVE", { exact: true }).uncheck();
+  await expect(page.getByLabel("VARIATIONS", { exact: true })).toBeDisabled();
+  await expect(page.getByLabel("VARIATIONS", { exact: true })).toHaveValue("1");
+  await expect(page.locator("#bot-move-display > .label")).toHaveText("BEST MOVE");
+  await page.getByLabel("AVERAGE MOVE", { exact: true }).check();
+  await expect(page.getByLabel("VARIATIONS", { exact: true })).toBeEnabled();
+  await expect(page.getByLabel("VARIATIONS", { exact: true })).toHaveValue("4");
+  await expect(page.locator("#bot-move-display > .label")).toHaveText("AVERAGE MOVE");
+  await setRange(page, "VARIATIONS", "10");
+  const rowsFit = await page.locator(".bot-toggle-slider-row").evaluateAll(
+    /** Keeps the paired labels and sliders inside the compact panel. */
+    (rows) => rows.every(
+      /** Checks every visible part of each row against its content bounds. */
+      (row) => [...row.querySelectorAll("label, span, input")].every(
+        /** Allows subpixel rounding without overlooking overflowing label text. */
+        (part) => part.getBoundingClientRect().right <= row.getBoundingClientRect().right + 1)));
+  assert.equal(rowsFit, true);
   await expect(page.getByLabel("DEPTH", { exact: true })).toHaveValue("6");
   await page.getByRole("button", { name: "START", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Analyzing Board", { timeout: 25000 });

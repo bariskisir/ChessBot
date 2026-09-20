@@ -127,9 +127,9 @@
   }
 }
 
-.bot-auto-play-row {
+.bot-toggle-slider-row {
   display: grid;
-  grid-template-columns: 86px minmax(0, 1fr);
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
   gap: 9px;
   padding: 5px 0;
@@ -140,7 +140,7 @@
     font-size: $detail-size;
   }
 
-  .bot-delay-label {
+  .bot-inline-slider-label {
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 3px 6px;
@@ -149,7 +149,7 @@
     font-size: $detail-size;
 
     > span:first-child { white-space: nowrap; }
-    > span + span { color: $accent; font-variant-numeric: tabular-nums; }
+    > span + span { min-width: 0; color: $accent; font-variant-numeric: tabular-nums; }
     input { grid-column: 1 / -1; margin: 0; }
   }
 }

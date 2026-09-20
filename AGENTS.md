@@ -71,7 +71,13 @@ Content/UI flow (isolated world):
 
 Key behaviour in `src/controller.ts`:
 
-- A 300ms `poll()` tracks FEN/orientation and drives a small state machine.
+- A mutation observer tracks board/history/clock changes and coalesces checks into
+  animation frames; a 300ms `poll()` remains as a fallback. New positions must settle
+  across checks, and recorded history must agree with the visible pieces.
+- Stockfish stays alive between searches. Cancellation drains output through
+  `bestmove` before another search starts; stuck or failed workers are replaced.
+- Move confirmation releases input as soon as the position changes, with a 700ms
+  deadline for rejected input rather than an unconditional pause.
 - A single `AbortController` (`operation`) is replaced by `cancel()`; STOP, new
   settings, new positions, and game-over actions all cancel pending work.
 - `executing`/`gameAction` flags plus a `WeakSet` of handled buttons prevent repeat

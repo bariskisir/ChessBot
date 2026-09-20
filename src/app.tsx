@@ -30,16 +30,29 @@ function Slider({ label, name, max, min = 0, step = 1, scale = 1, suffix = "", s
     (event) => change({ [name]: Number(event.target.value) * scale })} /></div>;
 }
 
-/** Renders Auto Play and its dependent delay in one compact setting row. */
+/** Pairs Auto Play with its delay using the shared toggle-and-slider layout. */
 function AutoPlay({ settings, change }: SettingProps) {
   const seconds = settings.autoPlayDelay / 1000;
-  return <div className="bot-setting-item bot-auto-play-row">
+  return <div className="bot-setting-item bot-toggle-slider-row">
     <label className="bot-checkbox-label"><input type="checkbox" checked={settings.autoPlay} onChange={
       /** Toggles automatic play and enables or disables its delay control. */
       (event) => change({ autoPlay: event.target.checked })} /><span>AUTO PLAY</span></label>
-    <label className="bot-delay-label" htmlFor="bot-autoPlayDelay"><span>RANDOM DELAY</span><span>{seconds}s</span><input id="bot-autoPlayDelay" aria-label="RANDOM DELAY" type="range" min="0" max="10" step="0.1" value={seconds} disabled={!settings.autoPlay} onChange={
+    <label className="bot-inline-slider-label" htmlFor="bot-autoPlayDelay"><span>RANDOM DELAY</span><span>{seconds}s</span><input id="bot-autoPlayDelay" aria-label="RANDOM DELAY" type="range" min="0" max="10" step="0.1" value={seconds} disabled={!settings.autoPlay} onChange={
       /** Stores the displayed delay in milliseconds for the move executor. */
       (event) => change({ autoPlayDelay: Number(event.target.value) * 1000 })} /></label>
+  </div>;
+}
+
+/** Uses one variation when averaging is disabled while retaining the preferred candidate count. */
+function AverageMove({ settings, change }: SettingProps) {
+  const lines = settings.averageMove ? settings.lines : 1;
+  return <div className="bot-setting-item bot-toggle-slider-row">
+    <label className="bot-checkbox-label"><input type="checkbox" checked={settings.averageMove} onChange={
+      /** Enables candidate selection without discarding the saved variation count. */
+      (event) => change({ averageMove: event.target.checked })} /><span>AVERAGE MOVE</span></label>
+    <label className="bot-inline-slider-label" htmlFor="bot-lines"><span>VARIATIONS</span><span>{lines}</span><input id="bot-lines" aria-label="VARIATIONS" type="range" min="1" max="10" step="1" value={lines} disabled={!settings.averageMove} onChange={
+      /** Stores the candidate count used when averaging is enabled. */
+      (event) => change({ lines: Number(event.target.value) })} /></label>
   </div>;
 }
 
@@ -62,7 +75,7 @@ function Evaluation({ state }: { state: PanelState }) {
   </div>;
 }
 
-/** Keeps analysis, animation controls, and persisted panel dragging together. */
+/** Groups dependent controls and labels the displayed move with the selected selection mode. */
 export function App() {
   const [state, setState] = useState<PanelState>({ settings: DEFAULT_SETTINGS, loaded: false, running: false, fen: "", move: "---", evaluation: undefined, status: "Waiting...", color: "#9ca3af", player: "w" });
   const [advanced, setAdvanced] = useState(false);
@@ -120,7 +133,7 @@ export function App() {
   return <div id="bot-overlay-panel" ref={panel} data-anchored={saved.left ? "left" : "right"} style={style}>
     <div className="bot-panel-header" onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag}><h3><img src={icon} width="16" height="16" alt="" draggable={false} />CHESS.COM BOT<span className="bot-version">v{chrome.runtime.getManifest().version}</span></h3></div>
     <div className="bot-controls-row"><button id={state.running ? "bot-panel-stop" : "bot-panel-start"} className="bot-panel-btn" onClick={state.running ? stop : start} disabled={!state.loaded}>{state.running ? "STOP" : "START"}</button></div>
-    <div id="bot-move-display"><span className="label">BEST MOVE</span><span className="value" id="best-move-text">{state.move}</span><Evaluation state={state} /></div>
+    <div id="bot-move-display"><span className="label">{state.settings.averageMove ? "AVERAGE MOVE" : "BEST MOVE"}</span><span className="value" id="best-move-text">{state.move}</span><Evaluation state={state} /></div>
     <div id="bot-status-text" className="bot-status-text" data-tone={STATUS_TONES[state.color] ?? "muted"} role="status">{state.status}</div>
     <div id="bot-panel-footer"><button id="bot-advanced-toggle" className={advanced ? "open" : ""} title="Toggle Settings" aria-label="Toggle Settings" aria-expanded={advanced} aria-controls="bot-advanced-panel" onClick={toggleAdvanced}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6" /></svg></button></div>
     <div id="bot-advanced-panel" className={`bot-advanced-section ${advanced ? "open" : ""}`} hidden={!advanced}>
@@ -128,10 +141,9 @@ export function App() {
       <Toggle label="AUTO NEW MATCH" name="autoNewMatch" {...controls} />
       <Toggle label="AUTO REMATCH" name="autoRematch" {...controls} />
       <Toggle label="ANALYZE OPPONENT" name="analyzeOpponent" {...controls} />
-      <Toggle label="AVERAGE MOVE" name="averageMove" {...controls} />
+      <AverageMove {...controls} />
       <Toggle label="ANIMATE MOVES" name="animateMoves" {...controls} />
       <Slider label="MISTAKE" name="mistakeProbability" max={100} suffix="%" {...controls} />
-      <Slider label="VARIATIONS" name="lines" min={1} max={10} {...controls} />
       <Slider label="DEPTH" name="depth" min={1} max={30} {...controls} />
     </div>
   </div>;

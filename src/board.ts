@@ -97,14 +97,15 @@ function inferFen(cells: Map<string, string>, board: HTMLElement): string | null
   try { return new Chess(fen).fen(); } catch { return null; }
 }
 
-/** Reconstructs the position from visible pieces and history without page-world helpers. */
+/** Waits for visible pieces and recorded moves to agree before exposing a playable position. */
 export function readPosition(): string | null {
   const board = getBoard();
   if (!board) return null;
   const placement = readPlacement(board);
   const chess = new Chess();
+  const nodes = document.querySelectorAll("wc-simple-move-list .node");
   try {
-    for (const node of document.querySelectorAll("wc-simple-move-list .node")) {
+    for (const node of nodes) {
       const figurine = node.querySelector("[data-figurine]")?.getAttribute("data-figurine") ?? "";
       const san = (figurine + (node.textContent ?? "")).replace(/[!?]/g, "").trim();
       if (san) chess.move(san);
@@ -112,6 +113,7 @@ export function readPosition(): string | null {
     }
   } catch { return null; }
   if (chess.fen().split(" ")[0] === placement) return chess.fen();
+  if (nodes.length) return null;
   return inferFen(readCells(board), board);
 }
 
