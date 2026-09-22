@@ -3,8 +3,8 @@ import { Chess } from "chess.js";
 import { boardBusy, canPlay, canResumePromotion, clearHighlights, getBoard, highlight, playMove, readPosition, resumePromotion, samePosition, userColor } from "./board";
 import { findGameAction, type GameAction } from "./automation";
 import { analyzePosition, delay, stopAnalysis } from "./engine-client";
-import { findMistake, playerScore } from "./mistake-mode";
-import { chooseAverageMove } from "./move-selection";
+import { evaluatePosition, findMistake, playerScore } from "./mistake-mode";
+import { chooseVerifiedAverageMove } from "./move-selection";
 import { DEFAULT_SETTINGS, normalizeSettings, type Settings, type Variation, type PanelPosition } from "./shared";
 import { loadSettings, saveSettings } from "./storage";
 
@@ -188,7 +188,7 @@ export class Controller {
     } finally { if (!signal.aborted) this.executing = false; }
   }
 
-  /** Applies the configured mistake threshold independently of the base selection mode. */
+  /** Plays the weakest alternative above the keep floor, gating every eval comparison on a deep search. */
   private async analyze(fen: string, player: "w" | "b", signal: AbortSignal): Promise<void> {
     const settings = this.state.settings;
     try {
@@ -200,31 +200,36 @@ export class Controller {
       const result = await analyzePosition(fen, { ...settings, lines: settings.averageMove ? settings.lines : 1 }, signal);
       await delay(Math.max(0, settings.thinkingTime - (Date.now() - started)), signal);
       if (!samePosition(readPosition() ?? "", fen) || userColor() !== player) return;
-      const evaluation = result.variations[0];
+      this.patch({ status: "Evaluating position...", color: "#3b82f6" });
+      const authoritative = await evaluatePosition(fen, settings, signal);
+      if (!samePosition(readPosition() ?? "", fen) || userColor() !== player) return;
+      const evaluation = authoritative ?? result.variations[0];
       if (evaluation) this.patch({ evaluation });
       const playerTurn = chess.turn() === player;
       let move = result.bestMove;
-      let mistake: "ideal" | "suboptimal" | undefined;
+      let mistake = false;
       if (playerTurn && settings.averageMove) {
-        move = chooseAverageMove(result.variations, player) ?? move;
+        this.patch({ status: "Verifying average move...", color: "#3b82f6" });
+        move = await chooseVerifiedAverageMove(fen, result.variations, player, settings, signal) ?? move;
       }
-      if (playerTurn && evaluation && playerScore(evaluation, player) >= settings.mistakeThreshold && Math.random() * 100 < settings.mistakeProbability) {
+      const trueScore = evaluation ? playerScore(evaluation, player) : 0;
+      if (playerTurn && evaluation && trueScore >= settings.mistakeKeep && Math.random() * 100 < settings.mistakeProbability) {
         this.patch({ status: "Attempting to find mistake...", color: "#f59e0b" });
-        const candidate = await findMistake(fen, player, settings, signal, result.bestMove);
-        if (candidate) { move = candidate.move; mistake = candidate.type; }
+        const candidate = await findMistake(fen, player, settings, signal, result.bestMove, trueScore);
+        if (candidate) { move = candidate.move; mistake = true; }
       }
       signal.throwIfAborted();
       if (!samePosition(readPosition() ?? "", fen) || userColor() !== player) return;
       const showMove = playerTurn || settings.analyzeOpponent;
-      this.patch({ move: showMove ? move.toUpperCase() : "---", status: !playerTurn ? "Opponent's turn" : mistake === "ideal" ? "Mistake Mode!" : mistake === "suboptimal" ? "Suboptimal Mode" : "Analyzing Board", color: !playerTurn ? "#9ca3af" : mistake === "ideal" ? "#ef4444" : mistake === "suboptimal" ? "#f97316" : "#10b981" });
-      if (!playerTurn || !settings.autoPlay || !canPlay(fen)) { if (showMove) highlight(move, mistake); else clearHighlights(); return; }
+      this.patch({ move: showMove ? move.toUpperCase() : "---", status: !playerTurn ? "Opponent's turn" : mistake ? "Mistake Mode!" : "Analyzing Board", color: !playerTurn ? "#9ca3af" : mistake ? "#ef4444" : "#10b981" });
+      if (!playerTurn || !settings.autoPlay || !canPlay(fen)) { if (showMove) highlight(move, mistake ? "mistake" : undefined); else clearHighlights(); return; }
       const moveDelay = Math.floor(Math.random() * (settings.autoPlayDelay + 1));
       this.patch({ status: moveDelay ? `Waiting ${Math.ceil(moveDelay / 100) / 10}s...` : "Playing move...", color: "#3b82f6" });
       await delay(moveDelay, signal);
       if (!samePosition(readPosition() ?? "", fen) || userColor() !== player) return;
       this.executing = true;
       if (!await playMove(fen, move, signal, settings.animateMoves)) return;
-      if (mistake) highlight(move, mistake);
+      if (mistake) highlight(move, "mistake");
       const deadline = Date.now() + 700;
       while (Date.now() < deadline) {
         const current = readPosition();

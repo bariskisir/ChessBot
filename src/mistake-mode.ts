@@ -2,7 +2,7 @@
 import { Chess } from "chess.js";
 import { analyzePosition } from "./engine-client";
 import type { Settings, Variation } from "./shared";
-export type MistakeType = "ideal" | "suboptimal";
+export type MistakeType = "mistake";
 export interface MistakeResult { move: string; score: number; type: MistakeType }
 
 /** Converts White-relative evaluations into a comparable score for the player. */
@@ -12,17 +12,21 @@ export function playerScore(variation: Variation | undefined, color: "w" | "b"):
   return color === "w" ? whiteScore : -whiteScore;
 }
 
-/** Chooses the weakest candidate keeping at least a pawn, prioritizing the 1-to-1.5 window. */
-export function chooseMistake(current: MistakeResult | null, move: string, score: number): MistakeResult | null {
-  if (score < 1) return current;
-  if (score <= 1.5) return { move, score, type: "ideal" };
-  if (current?.type === "ideal") return current;
-  return !current || score < current.score ? { move, score, type: "suboptimal" } : current;
+/** Keeps the weakest candidate that never drops the player below the keep floor. */
+export function chooseMistake(current: MistakeResult | null, move: string, score: number, keep: number): MistakeResult | null {
+  if (score < keep) return current;
+  return !current || score < current.score ? { move, score, type: "mistake" } : current;
 }
 
-/** Rechecks shallow candidates at the configured depth before accepting a safe mistake. */
-export async function findMistake(fen: string, color: "w" | "b", settings: Settings, signal: AbortSignal, bestMove: string): Promise<MistakeResult | null> {
-  const candidates = await analyzePosition(fen, { ...settings, depth: 1, lines: 3 }, signal);
+/** Reads the authoritative position score from a deep single-line search without choosing a move. */
+export async function evaluatePosition(fen: string, settings: Settings, signal: AbortSignal): Promise<Variation | undefined> {
+  const result = await analyzePosition(fen, { ...settings, depth: 15, lines: 1 }, signal);
+  return result.variations[0];
+}
+
+/** Scans ten depth-3 candidates and rechecks each survivor at full depth before accepting a mistake. */
+export async function findMistake(fen: string, color: "w" | "b", settings: Settings, signal: AbortSignal, bestMove: string, currentScore: number): Promise<MistakeResult | null> {
+  const candidates = await analyzePosition(fen, { ...settings, depth: 3, lines: 10 }, signal);
   let selected: MistakeResult | null = null;
   for (const candidate of candidates.variations) {
     const move = candidate.moves[0];
@@ -33,8 +37,10 @@ export async function findMistake(fen: string, color: "w" | "b", settings: Setti
     if (chess.isCheckmate()) continue;
     const result = await analyzePosition(chess.fen(), { ...settings, lines: 1 }, signal);
     if (!result.variations[0] && !chess.isDraw()) continue;
-    selected = chooseMistake(selected, move, playerScore(result.variations[0], color));
-    if (selected?.type === "ideal") return selected;
+    const score = playerScore(result.variations[0], color);
+    if (score >= currentScore) continue;
+    selected = chooseMistake(selected, move, score, settings.mistakeKeep);
+    if (selected && selected.score <= settings.mistakeKeep) return selected;
   }
   return selected;
 }

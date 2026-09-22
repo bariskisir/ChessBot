@@ -170,7 +170,7 @@ async function verifyEvaluationUpdates(page: Page): Promise<void> {
   }
 }
 
-/** Verifies both selection modes honor mistake probability and the configurable advantage gate. */
+/** Verifies mistake probability honors the keep-eval floor in both selection modes. */
 async function verifyMistakes(page: Page): Promise<void> {
   for (const winning of [true, false]) {
     await page.evaluate(
@@ -179,8 +179,8 @@ async function verifyMistakes(page: Page): Promise<void> {
     for (const average of [true, false]) {
       await page.getByLabel("AVERAGE MOVE", { exact: true }).setChecked(average);
       await setRange(page, "MISTAKE", "100");
-      await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toBeEnabled();
-      await setRange(page, "EVAL THRESHOLD", winning ? "1.5" : "0");
+      await expect(page.getByLabel("KEEP EVAL", { exact: true })).toBeEnabled();
+      await setRange(page, "KEEP EVAL", "2");
       await page.getByRole("status").evaluate(
         /** Records short-lived searches so a safe fallback cannot hide a skipped attempt. */
         (element) => {
@@ -194,27 +194,24 @@ async function verifyMistakes(page: Page): Promise<void> {
           observer.observe(element, { childList: true, characterData: true, subtree: true });
         });
       await page.getByRole("button", { name: "START", exact: true }).click();
-      await expect(page.getByRole("status")).toHaveAttribute("data-mistake-attempted", "true", { timeout: 25000 });
-      await expect(page.getByRole("status")).toHaveText(winning ? /^(Mistake Mode!|Suboptimal Mode)$/ : /^(Mistake Mode!|Suboptimal Mode|Analyzing Board)$/, { timeout: 25000 });
-      if (winning) await expect(page.locator('.highlight[data-tone="ideal"], .highlight[data-tone="suboptimal"]')).toHaveCount(2);
-      await page.getByRole("button", { name: "STOP", exact: true }).click();
-      if (!winning) {
-        await setRange(page, "EVAL THRESHOLD", "4");
-        await page.getByRole("button", { name: "START", exact: true }).click();
+      if (winning) {
+        await expect(page.getByRole("status")).toHaveAttribute("data-mistake-attempted", "true", { timeout: 25000 });
+        await expect(page.getByRole("status")).toHaveText("Mistake Mode!", { timeout: 25000 });
+        await expect(page.locator('.highlight[data-tone="mistake"]')).toHaveCount(2);
+      } else {
         await expect(page.getByRole("status")).toHaveText("Analyzing Board", { timeout: 25000 });
-        await page.getByRole("button", { name: "STOP", exact: true }).click();
       }
+      await page.getByRole("button", { name: "STOP", exact: true }).click();
       await setRange(page, "MISTAKE", "0");
-      await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toBeDisabled();
+      await expect(page.getByLabel("KEEP EVAL", { exact: true })).toBeDisabled();
       await page.getByRole("button", { name: "START", exact: true }).click();
       await expect(page.getByRole("status")).toHaveText("Analyzing Board", { timeout: 25000 });
       await page.getByRole("button", { name: "STOP", exact: true }).click();
     }
   }
   await setRange(page, "MISTAKE", "5");
-  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toBeEnabled();
-  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveValue("4");
-  await setRange(page, "EVAL THRESHOLD", "1.5");
+  await expect(page.getByLabel("KEEP EVAL", { exact: true })).toBeEnabled();
+  await expect(page.getByLabel("KEEP EVAL", { exact: true })).toHaveValue("2");
   await setRange(page, "MISTAKE", "0");
   await page.getByLabel("AVERAGE MOVE", { exact: true }).check();
 }
@@ -253,11 +250,11 @@ try {
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveAttribute("step", "0.1");
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toBeDisabled();
   await expect(page.getByLabel("MISTAKE", { exact: true })).toHaveAttribute("max", "100");
-  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveValue("2.5");
-  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toBeDisabled();
-  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveAttribute("min", "0");
-  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveAttribute("max", "4");
-  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveAttribute("step", "0.5");
+  await expect(page.getByLabel("KEEP EVAL", { exact: true })).toHaveValue("2");
+  await expect(page.getByLabel("KEEP EVAL", { exact: true })).toBeDisabled();
+  await expect(page.getByLabel("KEEP EVAL", { exact: true })).toHaveAttribute("min", "0");
+  await expect(page.getByLabel("KEEP EVAL", { exact: true })).toHaveAttribute("max", "5");
+  await expect(page.getByLabel("KEEP EVAL", { exact: true })).toHaveAttribute("step", "0.5");
   await expect(page.getByLabel("VARIATIONS", { exact: true })).toHaveAttribute("max", "10");
   await expect(page.getByLabel("VARIATIONS", { exact: true })).toBeEnabled();
   await setRange(page, "VARIATIONS", "4");
@@ -346,7 +343,7 @@ try {
   // Persist animation alongside slider values and the dragged panel position.
   await page.getByLabel("ANIMATE MOVES", { exact: true }).check();
   await setRange(page, "MISTAKE", "70");
-  await setRange(page, "EVAL THRESHOLD", "3.5");
+  await setRange(page, "KEEP EVAL", "3.5");
   await setRange(page, "RANDOM DELAY", "3.4");
   const header = await page.locator(".bot-panel-header").boundingBox();
   assert.ok(header);
@@ -359,7 +356,7 @@ try {
   await expect(page.getByRole("button", { name: "START", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Toggle Settings" }).click();
   await expect(page.getByLabel("MISTAKE", { exact: true })).toHaveValue("70");
-  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveValue("3.5");
+  await expect(page.getByLabel("KEEP EVAL", { exact: true })).toHaveValue("3.5");
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveValue("3.4");
   await expect(page.getByLabel("AUTO NEW MATCH", { exact: true })).toBeChecked();
   await expect(page.getByLabel("AUTO REMATCH", { exact: true })).toBeChecked();

@@ -56,15 +56,15 @@ function AverageMove({ settings, change }: SettingProps) {
   </div>;
 }
 
-/** Pairs five-percent mistake steps with a threshold enabled for nonzero probability. */
+/** Pairs five-percent mistake steps with a keep floor enabled for nonzero probability. */
 function MistakeMode({ settings, change }: SettingProps) {
   return <div className="bot-setting-item bot-toggle-slider-row bot-mistake-row">
     <label className="bot-inline-slider-label" htmlFor="bot-mistakeProbability"><span>MISTAKE</span><span>{settings.mistakeProbability}%</span><input id="bot-mistakeProbability" aria-label="MISTAKE" type="range" min="0" max="100" step="5" value={settings.mistakeProbability} onChange={
       /** Keeps mistake probability independent of the base move selector. */
       (event) => change({ mistakeProbability: Number(event.target.value) })} /></label>
-    <label className="bot-inline-slider-label" htmlFor="bot-mistakeThreshold"><span>EVAL THRESHOLD</span><span>{settings.mistakeThreshold.toFixed(1)}</span><input id="bot-mistakeThreshold" aria-label="EVAL THRESHOLD" type="range" min="0" max="4" step="0.5" value={settings.mistakeThreshold} disabled={settings.mistakeProbability === 0} onChange={
-      /** Saves the minimum advantage required to attempt a mistake. */
-      (event) => change({ mistakeThreshold: Number(event.target.value) })} /></label>
+    <label className="bot-inline-slider-label" htmlFor="bot-mistakeKeep"><span>KEEP EVAL</span><span>{settings.mistakeKeep.toFixed(1)}</span><input id="bot-mistakeKeep" aria-label="KEEP EVAL" type="range" min="0" max="5" step="0.5" value={settings.mistakeKeep} disabled={settings.mistakeProbability === 0} onChange={
+      /** Saves the minimum advantage a mistake may keep. */
+      (event) => change({ mistakeKeep: Number(event.target.value) })} /></label>
   </div>;
 }
 

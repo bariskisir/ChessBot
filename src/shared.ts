@@ -3,7 +3,7 @@ export interface PanelPosition { top: string; left?: string; right?: string }
 export interface Settings {
   depth: number; time: number; lines: number; autoPlay: boolean;
   autoPlayDelay: number; autoNewMatch: boolean; autoRematch: boolean; analyzeOpponent: boolean;
-  averageMove: boolean; animateMoves: boolean; mistakeProbability: number; mistakeThreshold: number; thinkingTime: number; panelPos: PanelPosition;
+  averageMove: boolean; animateMoves: boolean; mistakeProbability: number; mistakeKeep: number; thinkingTime: number; panelPos: PanelPosition;
 }
 export interface Variation { depth: number; score: number; mate: number | null; moves: string[]; nodes: number }
 export interface Analysis { fen: string; bestMove: string; variations: Variation[] }
@@ -12,7 +12,7 @@ export type EngineResponse = { result: Analysis } | { error: string };
 export const DEFAULT_SETTINGS: Settings = {
   depth: 7, time: 0, lines: 10, autoPlay: true, autoPlayDelay: 2500,
   autoNewMatch: true, autoRematch: false, analyzeOpponent: false, averageMove: true, animateMoves: false, mistakeProbability: 25,
-  mistakeThreshold: 2.5, thinkingTime: 100, panelPos: { top: "10px", right: "10px" },
+  mistakeKeep: 2, thinkingTime: 100, panelPos: { top: "10px", right: "10px" },
 };
 
 /** Clamps finite settings and snaps them to the control's supported step. */
@@ -26,6 +26,7 @@ export function normalizeSettings(value: unknown): Settings {
   const panelPos: PanelPosition = { top: positionValue(data.panelPos?.top, "10px") };
   if (data.panelPos?.left !== undefined) panelPos.left = positionValue(data.panelPos.left, "10px");
   else panelPos.right = positionValue(data.panelPos?.right, "10px");
+  const legacyThreshold = (data as { mistakeThreshold?: unknown }).mistakeThreshold;
   return {
     depth: bounded(data.depth, 7, 1, 30), time: bounded(data.time, 0, 0, 15000), lines: bounded(data.lines, 10, 1, 10),
     autoPlay: typeof data.autoPlay === "boolean" ? data.autoPlay : true,
@@ -34,7 +35,7 @@ export function normalizeSettings(value: unknown): Settings {
     averageMove: typeof data.averageMove === "boolean" ? data.averageMove : true,
     animateMoves: data.animateMoves === true,
     mistakeProbability: bounded(data.mistakeProbability, 25, 0, 100, 5),
-    mistakeThreshold: bounded(data.mistakeThreshold, 2.5, 0, 4, 0.5),
+    mistakeKeep: bounded(data.mistakeKeep ?? legacyThreshold, 2, 0, 5, 0.5),
     thinkingTime: bounded(data.thinkingTime, 100, 1, 100), panelPos,
   };
 }

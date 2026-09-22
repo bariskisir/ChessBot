@@ -13,6 +13,7 @@ function settingsValidation(): void {
   assert.equal(DEFAULT_SETTINGS.analyzeOpponent, false);
   assert.equal(DEFAULT_SETTINGS.autoNewMatch, true);
   assert.equal(DEFAULT_SETTINGS.mistakeProbability, 25);
+  assert.equal(DEFAULT_SETTINGS.mistakeKeep, 2);
   assert.equal(DEFAULT_SETTINGS.lines, 10);
   assert.equal(DEFAULT_SETTINGS.averageMove, true);
   assert.equal(DEFAULT_SETTINGS.animateMoves, false);
@@ -30,16 +31,17 @@ function settingsValidation(): void {
 }
 test("settings reject corrupt values and remove legacy engine selection", settingsValidation);
 
-/** Preserves half-pawn choices and migrates missing or invalid thresholds to the default. */
-function mistakeThresholds(): void {
-  assert.equal(normalizeSettings({}).mistakeThreshold, 2.5);
-  for (let threshold = 0; threshold <= 4; threshold += 0.5) assert.equal(normalizeSettings({ mistakeThreshold: threshold }).mistakeThreshold, threshold);
-  for (const threshold of [NaN, Infinity, "2", null]) assert.equal(normalizeSettings({ mistakeThreshold: threshold }).mistakeThreshold, 2.5);
-  assert.equal(normalizeSettings({ mistakeThreshold: -1 }).mistakeThreshold, 0);
-  assert.equal(normalizeSettings({ mistakeThreshold: 5 }).mistakeThreshold, 4);
-  assert.equal(normalizeSettings({ mistakeThreshold: 1.7 }).mistakeThreshold, 1.5);
+/** Preserves half-pawn keep choices and migrates the legacy threshold to the keep floor. */
+function mistakeKeepFloor(): void {
+  assert.equal(normalizeSettings({}).mistakeKeep, 2);
+  for (let keep = 0; keep <= 5; keep += 0.5) assert.equal(normalizeSettings({ mistakeKeep: keep }).mistakeKeep, keep);
+  for (const keep of [NaN, Infinity, "2", null]) assert.equal(normalizeSettings({ mistakeKeep: keep }).mistakeKeep, 2);
+  assert.equal(normalizeSettings({ mistakeKeep: -1 }).mistakeKeep, 0);
+  assert.equal(normalizeSettings({ mistakeKeep: 6 }).mistakeKeep, 5);
+  assert.equal(normalizeSettings({ mistakeKeep: 1.7 }).mistakeKeep, 1.5);
+  assert.equal(normalizeSettings({ mistakeThreshold: 3 }).mistakeKeep, 3);
 }
-test("mistake thresholds retain half-pawn steps and reject invalid preferences", mistakeThresholds);
+test("mistake keep-eval retains half-pawn steps and migrates the legacy threshold", mistakeKeepFloor);
 
 /** Confirms centipawn and mate scores remain White-relative on Black's turn. */
 function scores(): void {

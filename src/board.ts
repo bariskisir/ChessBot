@@ -143,7 +143,7 @@ export function highlight(move: string, mistake?: MistakeType): void {
     mark.dataset.file = String(point.file);
     mark.dataset.rank = String(point.rank);
     mark.dataset.end = square === move.slice(0, 2) ? "from" : "to";
-    mark.dataset.tone = mistake === "ideal" ? "ideal" : mistake === "suboptimal" ? "suboptimal" : "default";
+    mark.dataset.tone = mistake === "mistake" ? "mistake" : "default";
     board.append(mark);
   }
 }

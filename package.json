@@ -1,6 +1,6 @@
 {
   "name": "chessbot",
-  "version": "2.2.0",
+  "version": "2.4.0",
   "private": true,
   "description": "Chess.com analysis overlay built with React, TypeScript, SCSS and local Stockfish 18.",
   "type": "module",

@@ -21,7 +21,7 @@ The primary goal of this extension is **education through observation**.
 *   **Real-time Evaluation Bar**: A dynamic, responsive eval bar that shows the advantage from the current player's perspective.
 *   **Auto Play Mode**: Automatically execute engine moves with a customizable random delay to simulate match flows.
 *   **Auto New Match & Auto Rematch**: Detect game over and start the next game automatically, with 2.5-second delays.
-*   **Mistake Mode**: In both Best Move and Average Move modes, try a safe, non-losing alternative with the configured probability when the player's advantage meets **Eval Threshold**. The threshold defaults to 2.5 pawns and is adjustable from 0 to 4 in 0.5 steps beside Mistake. At 0% mistakes are disabled; at 100% every eligible player turn triggers an attempt. If no safe alternative is found, keep the normal selection.
+*   **Mistake Mode**: With the configured probability, play the weakest engine alternative that still keeps your advantage above **KEEP EVAL**. Keep defaults to 2 pawns and is adjustable from 0 to 5 in 0.5 steps beside Mistake. At 0% mistakes are disabled. If no alternative stays above the floor, or you are already below it, keep the normal selection.
 *   **Smooth UI**: A modern, draggable overlay panel that stays out of your way and remembers its position.
 *   **Customizable Depth**: Adjust analysis depth from 1 to 30 to balance speed and power.
 

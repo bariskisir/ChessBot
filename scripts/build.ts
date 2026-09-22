@@ -29,6 +29,6 @@ async function main(): Promise<void> {
   await Promise.all([bundle("background.ts", "background.js"), bundle("engine.ts", "offscreen.js"), bundle("content.ts", "content.js")]);
   for (const name of ["manifest.json", "offscreen.html", "icons"]) await cp(resolve(root, "public", name), resolve(output, name), { recursive: true });
   await cp(resolve(root, "public/vendor"), output, { recursive: true });
-  console.log("Built ChessBot 2.2.0 → dist (React, TypeScript, SCSS, local Stockfish 18)");
+  console.log("Built ChessBot 2.4.0 → dist (React, TypeScript, SCSS, local Stockfish 18)");
 }
 await main();

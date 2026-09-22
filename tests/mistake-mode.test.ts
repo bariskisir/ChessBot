@@ -1,24 +1,22 @@
-/** Verifies safe-mistake selection and cancelable automation delays. */
+/** Verifies keep-floor mistake selection and cancelable automation delays. */
 import assert from "node:assert/strict";
 import test from "node:test";
 import { chooseMistake, playerScore } from "../src/mistake-mode";
 import { delay } from "../src/engine-client";
 
-/** Preserves the 1-pawn floor and chooses the weakest remaining winning move. */
+/** Rejects anything below the keep floor and takes the weakest qualifier. */
 function safeMistakes(): void {
-  assert.equal(chooseMistake(null, "e2e4", -0.1), null);
-  assert.equal(chooseMistake(null, "e2e4", 0), null);
-  assert.equal(chooseMistake(null, "e2e4", 0.9), null);
-  const winning = chooseMistake(null, "e2e4", 4);
-  const weaker = chooseMistake(winning, "d2d4", 2);
+  assert.equal(chooseMistake(null, "e2e4", 1.9, 2), null);
+  assert.equal(chooseMistake(null, "e2e4", -0.1, 0), null);
+  assert.equal(chooseMistake(null, "a2a3", 2, 2)?.type, "mistake");
+  assert.equal(chooseMistake(null, "a2a3", 0, 0)?.type, "mistake");
+  const keeping = chooseMistake(null, "e2e4", 4, 2);
+  const weaker = chooseMistake(keeping, "d2d4", 2.5, 2);
   assert.equal(weaker?.move, "d2d4");
-  assert.equal(weaker?.type, "suboptimal");
-  const ideal = chooseMistake(weaker, "g1f3", 1.5);
-  assert.equal(ideal?.type, "ideal");
-  assert.equal(chooseMistake(ideal, "b1c3", 3), ideal);
-  assert.equal(chooseMistake(null, "a2a3", 1)?.type, "ideal");
+  assert.equal(weaker?.type, "mistake");
+  assert.equal(chooseMistake(weaker, "g1f3", 3, 2), weaker);
 }
-test("mistake mode keeps the 1-pawn floor and the 1-to-1.5 window", safeMistakes);
+test("mistake mode keeps every blunder above the keep-eval floor", safeMistakes);
 
 /** Uses the player's color when deciding whether a position is winning. */
 function scores(): void {

@@ -8,7 +8,7 @@ ChessBot is a **Chrome Manifest V3 extension** that adds a floating analysis pan
 **Chess.com**. The panel analyses the current board with a **local Stockfish 18 WASM**
 engine and can optionally play moves and start follow-up games automatically.
 
-- Version: `2.2.0` (see `package.json` and `public/manifest.json`).
+- Version: `2.4.0` (see `package.json` and `public/manifest.json`).
 - Engine is **100% local**. There is no remote engine, no API key, no engine selector,
   and no network calls for analysis.
 - The overlay behaves the **same regardless of opponent type** (computer bot or human).
@@ -65,7 +65,7 @@ Content/UI flow (isolated world):
   helpers or marker attributes), validates legality, highlights moves with generic
   selectors, drags pieces along jittered paths with human pacing, and handles promotions.
 - `src/automation.ts` finds game-over New Game / Rematch controls.
-- `src/mistake-mode.ts` picks safe non-losing "mistake" candidates.
+- `src/mistake-mode.ts` picks the weakest alternative that keeps eval above the keep floor.
 - `src/move-selection.ts` picks a non-losing average-quality move from the engine's
   MultiPV list when `averageMove` is enabled.
 
@@ -84,6 +84,9 @@ Key behaviour in `src/controller.ts`:
   clicks and replayed actions.
 - Auto Play only plays the player's own moves; opponent suggestions are shown when
   `analyzeOpponent` is enabled.
+- The displayed eval and every mistake comparison come from a deep single-line
+  search (`depth 15, lines 1`), independent of the play-depth MultiPV search.
+  Average candidates are deep-verified in rank order and must stay at or above zero.
 
 ## Build details
 
