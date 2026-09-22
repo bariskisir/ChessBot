@@ -10,9 +10,9 @@ export interface Analysis { fen: string; bestMove: string; variations: Variation
 export interface EngineRequest { target: "background" | "engine"; action: "analyze" | "stop"; owner: string; fen: string; settings: Settings }
 export type EngineResponse = { result: Analysis } | { error: string };
 export const DEFAULT_SETTINGS: Settings = {
-  depth: 10, time: 0, lines: 10, autoPlay: true, autoPlayDelay: 300,
-  autoNewMatch: true, autoRematch: false, analyzeOpponent: false, averageMove: true, animateMoves: false, mistakeProbability: 20,
-  mistakeThreshold: 1.5, thinkingTime: 100, panelPos: { top: "10px", right: "10px" },
+  depth: 7, time: 0, lines: 10, autoPlay: true, autoPlayDelay: 2500,
+  autoNewMatch: true, autoRematch: false, analyzeOpponent: false, averageMove: true, animateMoves: false, mistakeProbability: 25,
+  mistakeThreshold: 2.5, thinkingTime: 100, panelPos: { top: "10px", right: "10px" },
 };
 
 /** Clamps finite settings and snaps them to the control's supported step. */
@@ -27,14 +27,14 @@ export function normalizeSettings(value: unknown): Settings {
   if (data.panelPos?.left !== undefined) panelPos.left = positionValue(data.panelPos.left, "10px");
   else panelPos.right = positionValue(data.panelPos?.right, "10px");
   return {
-    depth: bounded(data.depth, 10, 1, 30), time: bounded(data.time, 0, 0, 15000), lines: bounded(data.lines, 10, 1, 10),
+    depth: bounded(data.depth, 7, 1, 30), time: bounded(data.time, 0, 0, 15000), lines: bounded(data.lines, 10, 1, 10),
     autoPlay: typeof data.autoPlay === "boolean" ? data.autoPlay : true,
-    autoPlayDelay: bounded(data.autoPlayDelay, 300, 0, 10000), autoNewMatch: data.autoNewMatch !== false,
+    autoPlayDelay: bounded(data.autoPlayDelay, 2500, 0, 10000), autoNewMatch: data.autoNewMatch !== false,
     autoRematch: data.autoRematch === true, analyzeOpponent: data.analyzeOpponent === true,
     averageMove: typeof data.averageMove === "boolean" ? data.averageMove : true,
     animateMoves: data.animateMoves === true,
-    mistakeProbability: bounded(data.mistakeProbability, 20, 0, 100, 5),
-    mistakeThreshold: bounded(data.mistakeThreshold, 1.5, 0, 4, 0.5),
+    mistakeProbability: bounded(data.mistakeProbability, 25, 0, 100, 5),
+    mistakeThreshold: bounded(data.mistakeThreshold, 2.5, 0, 4, 0.5),
     thinkingTime: bounded(data.thinkingTime, 100, 1, 100), panelPos,
   };
 }

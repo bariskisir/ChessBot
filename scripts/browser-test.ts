@@ -253,7 +253,7 @@ try {
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveAttribute("step", "0.1");
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toBeDisabled();
   await expect(page.getByLabel("MISTAKE", { exact: true })).toHaveAttribute("max", "100");
-  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveValue("1.5");
+  await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveValue("2.5");
   await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toBeDisabled();
   await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveAttribute("min", "0");
   await expect(page.getByLabel("EVAL THRESHOLD", { exact: true })).toHaveAttribute("max", "4");

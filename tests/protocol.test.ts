@@ -7,12 +7,12 @@ import { DEFAULT_SETTINGS, normalizeSettings, parseInfo } from "../src/shared";
 /** Rejects corrupt settings and keeps move animation opt-in for saved preferences. */
 function settingsValidation(): void {
   assert.deepEqual(normalizeSettings(null), DEFAULT_SETTINGS);
-  assert.equal(DEFAULT_SETTINGS.depth, 10);
-  assert.equal(DEFAULT_SETTINGS.autoPlayDelay, 300);
+  assert.equal(DEFAULT_SETTINGS.depth, 7);
+  assert.equal(DEFAULT_SETTINGS.autoPlayDelay, 2500);
   assert.equal(DEFAULT_SETTINGS.autoPlay, true);
   assert.equal(DEFAULT_SETTINGS.analyzeOpponent, false);
   assert.equal(DEFAULT_SETTINGS.autoNewMatch, true);
-  assert.equal(DEFAULT_SETTINGS.mistakeProbability, 20);
+  assert.equal(DEFAULT_SETTINGS.mistakeProbability, 25);
   assert.equal(DEFAULT_SETTINGS.lines, 10);
   assert.equal(DEFAULT_SETTINGS.averageMove, true);
   assert.equal(DEFAULT_SETTINGS.animateMoves, false);
@@ -32,9 +32,9 @@ test("settings reject corrupt values and remove legacy engine selection", settin
 
 /** Preserves half-pawn choices and migrates missing or invalid thresholds to the default. */
 function mistakeThresholds(): void {
-  assert.equal(normalizeSettings({}).mistakeThreshold, 1.5);
+  assert.equal(normalizeSettings({}).mistakeThreshold, 2.5);
   for (let threshold = 0; threshold <= 4; threshold += 0.5) assert.equal(normalizeSettings({ mistakeThreshold: threshold }).mistakeThreshold, threshold);
-  for (const threshold of [NaN, Infinity, "2", null]) assert.equal(normalizeSettings({ mistakeThreshold: threshold }).mistakeThreshold, 1.5);
+  for (const threshold of [NaN, Infinity, "2", null]) assert.equal(normalizeSettings({ mistakeThreshold: threshold }).mistakeThreshold, 2.5);
   assert.equal(normalizeSettings({ mistakeThreshold: -1 }).mistakeThreshold, 0);
   assert.equal(normalizeSettings({ mistakeThreshold: 5 }).mistakeThreshold, 4);
   assert.equal(normalizeSettings({ mistakeThreshold: 1.7 }).mistakeThreshold, 1.5);
