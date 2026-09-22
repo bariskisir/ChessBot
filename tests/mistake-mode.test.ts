@@ -4,9 +4,11 @@ import test from "node:test";
 import { chooseMistake, playerScore } from "../src/mistake-mode";
 import { delay } from "../src/engine-client";
 
-/** Preserves the safe window and chooses the weakest remaining winning move. */
+/** Preserves the 1-pawn floor and chooses the weakest remaining winning move. */
 function safeMistakes(): void {
   assert.equal(chooseMistake(null, "e2e4", -0.1), null);
+  assert.equal(chooseMistake(null, "e2e4", 0), null);
+  assert.equal(chooseMistake(null, "e2e4", 0.9), null);
   const winning = chooseMistake(null, "e2e4", 4);
   const weaker = chooseMistake(winning, "d2d4", 2);
   assert.equal(weaker?.move, "d2d4");
@@ -14,9 +16,9 @@ function safeMistakes(): void {
   const ideal = chooseMistake(weaker, "g1f3", 1.5);
   assert.equal(ideal?.type, "ideal");
   assert.equal(chooseMistake(ideal, "b1c3", 3), ideal);
-  assert.equal(chooseMistake(null, "a2a3", 0)?.type, "ideal");
+  assert.equal(chooseMistake(null, "a2a3", 1)?.type, "ideal");
 }
-test("mistake mode keeps non-losing candidates and the 1.5-pawn window", safeMistakes);
+test("mistake mode keeps the 1-pawn floor and the 1-to-1.5 window", safeMistakes);
 
 /** Uses the player's color when deciding whether a position is winning. */
 function scores(): void {

@@ -12,9 +12,9 @@ export function playerScore(variation: Variation | undefined, color: "w" | "b"):
   return color === "w" ? whiteScore : -whiteScore;
 }
 
-/** Chooses the weakest non-losing candidate, prioritizing the zero-to-1.5 window. */
+/** Chooses the weakest candidate keeping at least a pawn, prioritizing the 1-to-1.5 window. */
 export function chooseMistake(current: MistakeResult | null, move: string, score: number): MistakeResult | null {
-  if (score < 0) return current;
+  if (score < 1) return current;
   if (score <= 1.5) return { move, score, type: "ideal" };
   if (current?.type === "ideal") return current;
   return !current || score < current.score ? { move, score, type: "suboptimal" } : current;
