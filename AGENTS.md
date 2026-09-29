@@ -5,10 +5,10 @@ Guidance for AI coding agents working in this repository. Read this before chang
 ## What this project is
 
 ChessBot is a **Chrome Manifest V3 extension** that adds a floating analysis panel to
-**Chess.com**. The panel analyses the current board with a **local Stockfish 19 WASM**
+**Chess.com and Lichess**. The panel analyses the current board with a **local Stockfish 19 WASM**
 engine and can optionally play moves and start follow-up games automatically.
 
-- Version: `2.5.0` (see `package.json` and `public/manifest.json`).
+- Version: `2.7.0` (see `package.json` and `public/manifest.json`).
 - Engine is **100% local**. There is no remote engine, no API key, no engine selector,
   and no network calls for analysis.
 - The overlay behaves the **same regardless of opponent type** (computer bot or human).
@@ -39,7 +39,7 @@ which runs check, unit tests, and build, then attaches `dist.zip` (the `dist/` f
 release — the same asset layout as previous releases.
 
 To use the extension manually: `npm run build`, open `chrome://extensions`, enable
-Developer mode, **Load unpacked**, select `dist/`, then refresh a Chess.com tab.
+Developer mode, **Load unpacked**, select `dist/`, then refresh a Chess.com or Lichess tab.
 
 ## Architecture
 
@@ -47,8 +47,8 @@ Three browser entry points are bundled into `dist/`:
 
 | Source | Output | Role |
 | --- | --- | --- |
-| `src/background.ts` | `background.js` | MV3 service worker. Ensures the offscreen document exists and routes document-scoped engine requests to it, tagging each request with a per-tab `owner`. |
-| `src/engine.ts` | `offscreen.js` | Runs inside the offscreen document. Owns the Stockfish worker, a job queue, per-owner cancellation, a 20s watchdog, depth/movetime limits, MultiPV, and UCI identity verification (`id name Stockfish 19`). |
+| `src/background.ts` | `background.js` | MV3 service worker. Routes document-scoped engine requests to the offscreen document and sends trusted input to Lichess through the debugger API. |
+| `src/engine.ts` | `offscreen.js` | Runs inside the offscreen document. Owns the Stockfish worker, a job queue, per-owner cancellation, startup and no-progress watchdogs, depth limits, MultiPV, and UCI identity verification (`id name Stockfish 19`). |
 | `src/content.ts` | `content.js` | Isolated world. Calls `mount()`. |
 
 Content/UI flow (isolated world):
@@ -61,10 +61,22 @@ Content/UI flow (isolated world):
   `parseInfo` (UCI → Variation, scores normalised to White).
 - `src/storage.ts` persists `Settings` in `chrome.storage.local` and migrates the
   legacy `bot-settings` localStorage entry on first load.
-- `src/board.ts` reads/serialises the position from visible markup only (no page-world
-  helpers or marker attributes), validates legality, highlights moves with generic
-  selectors, drags pieces along jittered paths with human pacing, and handles promotions.
-- `src/automation.ts` finds game-over New Game / Rematch controls.
+- `src/providers/` contains the provider contract, host selection, shared FEN utilities,
+  and separate board, input, and follow-up implementations. Lichess mode detection and
+  coordinates live in `lichess-dom.ts`; `lichess-board.ts` reconstructs standard rounds
+  and training from SAN and follows known positions when round history is hidden.
+  Racer and Storm use visible last-move markers and legal continuations, with estimated
+  FEN state when a new puzzle omits its history.
+- `src/move-analysis.ts` applies deep evaluation, average selection, and mistake settings.
+  `src/move-execution.ts` owns input confirmation and three retries at one-second intervals;
+  each retry performs fresh analysis using the complete selection policy.
+- `src/input-protocol.ts`, `src/input-client.ts`, and `src/trusted-input.ts` share typed
+  trusted gestures, propagate cancellation, and serialize debugger access per tab.
+- `src/board.ts` and `src/automation.ts` delegate common operations to the selected provider.
+- `src/followup-session.ts` carries a one-use Lichess follow-up marker through same-tab
+  navigation so an automatically started round resumes the running controller.
+- Chess.com sends synthetic drags. Lichess Chessground rejects untrusted input, so Lichess
+  Auto Play sends short trusted drags through `chrome.debugger` and requires its permission.
 - `src/mistake-mode.ts` picks the weakest alternative that keeps eval above the keep floor.
 - `src/move-selection.ts` picks a non-losing average-quality move from the engine's
   MultiPV list when `averageMove` is enabled.
@@ -76,17 +88,23 @@ Key behaviour in `src/controller.ts`:
   across checks, and recorded history must agree with the visible pieces.
 - Stockfish stays alive between searches. Cancellation drains output through
   `bestmove` before another search starts; stuck or failed workers are replaced.
-- Move confirmation releases input as soon as the position changes, with a 700ms
-  deadline for rejected input rather than an unconditional pause.
+- Move confirmation observes board changes independently of input acknowledgements.
+  Input expires after 3 seconds; acknowledged input has a 700ms confirmation deadline.
+  STOP or expiry aborts the provider gesture and its pending trusted-input request.
 - A single `AbortController` (`operation`) is replaced by `cancel()`; STOP, new
   settings, new positions, and game-over actions all cancel pending work.
-- `executing`/`gameAction` flags plus a `WeakSet` of handled buttons prevent repeat
-  clicks and replayed actions.
-- Auto Play only plays the player's own moves; opponent suggestions are shown when
-  `analyzeOpponent` is enabled.
-- The displayed eval and every mistake comparison come from a deep single-line
-  search (`depth 15, lines 1`), independent of the play-depth MultiPV search.
-  Average candidates are deep-verified in rank order and must stay at or above zero.
+- One `pendingAction` union distinguishes move input, promotion recovery, and follow-up
+  actions; a `WeakSet` of handled buttons prevents repeat clicks and replayed actions.
+- Analysis and Auto Play only run on the player's turn; opponent positions issue no
+  engine requests and display no suggested move.
+- Searches use depth limits and require the selected depth before automatic input.
+  Random Delay controls intentional pre-move waiting; there is no minimum thinking delay.
+- In Lichess training, failed feedback opens the solution and then clicks Continue
+  training only while Auto Play is enabled; correct feedback never triggers it.
+- Best Move with mistakes disabled uses the main search's evaluation at any selected depth.
+  Average or mistake selection at depths below 15 uses an additional depth-15 evaluation.
+  Average candidates are verified at `max(15, settings.depth)` in rank order and must
+  stay at or above zero.
 
 ## Build details
 
@@ -131,6 +149,9 @@ These are enforced by `scripts/check-comments.ts` and `tsc`:
 - The fixture exposes `window.chessbotFixture` (`setFen`, `gameOver`, counters,
   `openPromotion`, `configurePromotion`). Its presentation lives in
   `tests/board-fixture.css`. Extend it when adding browser coverage.
+- Intercepted Lichess fixtures verify round and training board reading, both
+  orientations, trusted input, partial history, and follow-up controls through
+  `scripts/lichess-browser-test.ts`.
 - The suite must not touch a signed-in live game.
 - No screenshot/artifact files are produced anymore; do not add new ones.
 
@@ -142,8 +163,3 @@ These are enforced by `scripts/check-comments.ts` and `tsc`:
 - Keep the engine local-only and the extension free of remote code.
 - ChessBot application code is MIT (`LICENSE`); Stockfish remains GPL-3.0.
 
-## Scope and ethics
-
-This tool is for education and engine-vs-bot observation. It works on any Chess.com
-game, but using engine assistance against human players in competitive play violates
-Chess.com's Terms of Service. Keep the fair-play notice in `README.md` accurate.

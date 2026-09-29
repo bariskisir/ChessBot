@@ -18,9 +18,9 @@ export function chooseMistake(current: MistakeResult | null, move: string, score
   return !current || score < current.score ? { move, score, type: "mistake" } : current;
 }
 
-/** Reads the authoritative position score from a deep single-line search without choosing a move. */
+/** Uses at least depth 15 for authoritative scores while honoring a higher selected depth. */
 export async function evaluatePosition(fen: string, settings: Settings, signal: AbortSignal): Promise<Variation | undefined> {
-  const result = await analyzePosition(fen, { ...settings, depth: 15, lines: 1 }, signal);
+  const result = await analyzePosition(fen, { ...settings, depth: Math.max(15, settings.depth), lines: 1 }, signal);
   return result.variations[0];
 }
 

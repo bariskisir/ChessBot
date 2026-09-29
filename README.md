@@ -2,7 +2,7 @@
 
 ![ChessBot Demo](gameplay.gif)
 
-ChessBot is a powerful Chrome Extension designed for **Chess.com**. It integrates advanced engine analysis directly into your browser, allowing you to observe, analyze, and learn from a top-tier chess engine in real-time.
+ChessBot is a Chrome extension for **Chess.com** and **Lichess**. It shows local Stockfish analysis beside supported game boards.
 
 ## 🚀 Purpose & Vision
 
@@ -13,14 +13,14 @@ The primary goal of this extension is **education through observation**.
 
 > [!WARNING]
 > **STRICT FAIR PLAY POLICY**
-> This application is strictly for educational purposes. **DO NOT use this tool to gain an unfair advantage against real human players.** Using chess bots in competitive matches against humans is a violation of Chess.com's Terms of Service and undermines the spirit of the game.
+> This application is strictly for educational purposes. **DO NOT use it to gain an unfair advantage against human players.** Chess.com prohibits engine assistance in competitive play. [Lichess Fair Play](https://lichess.org/page/fair-play) prohibits engine help during human games and programmatic GUI moves even against its AI; use the Lichess features only where its rules permit them.
 
 ## ✨ Key Features
 
 *   **Local Stockfish 19**: Runs entirely in your browser via WASM. There is no remote engine or API configuration, and all calculations stay on your device.
 *   **Real-time Evaluation Bar**: A dynamic, responsive eval bar that shows the advantage from the current player's perspective.
 *   **Auto Play Mode**: Automatically execute engine moves with a customizable random delay to simulate match flows.
-*   **Auto New Match & Auto Rematch**: Detect game over and start the next game automatically, with 2.5-second delays.
+*   **Auto New Match & Auto Rematch**: Detect game over and start the next game automatically, with 2.5-second delays. On Lichess, an automated follow-up keeps the bot running after navigation to the new round.
 *   **Mistake Mode**: With the configured probability, play the weakest engine alternative that still keeps your advantage above **KEEP EVAL**. Keep defaults to 2 pawns and is adjustable from 0 to 5 in 0.5 steps beside Mistake. At 0% mistakes are disabled. If no alternative stays above the floor, or you are already below it, keep the normal selection.
 *   **Smooth UI**: A modern, draggable overlay panel that stays out of your way and remembers its position.
 *   **Customizable Depth**: Adjust analysis depth from 1 to 30 to balance speed and power.
@@ -49,11 +49,19 @@ Install and build hooks copy the pinned `stockfish@19.0.0` single-threaded Lite 
 
 ## ⚙️ How to Use
 
-1.  Navigate to any game or analysis page on [Chess.com](https://www.chess.com/play/computer).
+1.  Navigate to a game on [Chess.com](https://www.chess.com/play/computer), a standard round on [Lichess](https://lichess.org/), or [Lichess training](https://lichess.org/training). The Lichess adapter reads the visible Chessground board and move list.
 2.  The **ChessBot** panel will appear on the screen.
 3.  Click **START** to begin board detection and analysis.
 4.  Toggle **AUTO PLAY** if you want the bot to make moves automatically (ideal for engine-vs-bot matches).
 5.  Use the **Advanced Settings** (arrow icon) to adjust Auto New Match, Auto Rematch, average move selection, random delay, mistake probability, engine variations (MultiPV), and depth.
+
+Lichess Auto Play uses Chrome's `debugger` permission because Chessground ignores synthetic mouse events. Chrome will show a debugging notice while each move is sent. Training puzzles require a visible move history so the current position can be reconstructed. When Lichess rounds hide their move list, position reading follows legal moves from an observed starting board. Unsupported variants and a midgame reload without visible history remain unanalyzed.
+
+Puzzle Racer and Puzzle Storm read the visible board, last-move markers, and legal continuations. A new timed puzzle has no visible history, so its initial FEN omits unknown castling and en passant rights; positions requiring those rights may have incomplete suggestions.
+
+Unaccepted or stalled move input retries up to three times with a one-second wait and fresh analysis using the current Average/Mistake settings. Each input attempt has a three-second limit. STOP cancels pending analysis, delays, and trusted gestures.
+
+In Lichess training, Auto Play opens the solution only after a failed move and then continues to the next puzzle. Correct intermediate moves keep the puzzle in progress.
 
 ## 💡 Optimal Settings for Auto Features
 

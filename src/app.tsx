@@ -16,7 +16,7 @@ interface EvalVars extends CSSProperties { "--bot-white"?: string | undefined }
 const STATUS_TONES: Record<string, string> = { "#9ca3af": "muted", "#10b981": "success", "#3b82f6": "info", "#ef4444": "danger", "#f59e0b": "warning", "#f97316": "ember" };
 
 /** Renders a compact checkbox for persisted automation and animation preferences. */
-function Toggle({ label, name, settings, change }: SettingProps & { label: string; name: "autoPlay" | "autoNewMatch" | "autoRematch" | "analyzeOpponent" | "averageMove" | "animateMoves" }) {
+function Toggle({ label, name, settings, change }: SettingProps & { label: string; name: "autoPlay" | "autoNewMatch" | "autoRematch" | "averageMove" | "animateMoves" }) {
   return <div className="bot-setting-item"><label className="bot-checkbox-label"><input type="checkbox" checked={settings[name]} onChange={
     /** Saves the selected automation preference. */
     (event) => change({ [name]: event.target.checked })} /><span>{label}</span></label></div>;
@@ -143,7 +143,7 @@ export function App() {
   if (saved.left) style["--bot-left"] = saved.left;
   const controls = { settings: state.settings, change };
   return <div id="bot-overlay-panel" ref={panel} data-anchored={saved.left ? "left" : "right"} style={style}>
-    <div className="bot-panel-header" onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag}><h3><img src={icon} width="16" height="16" alt="" draggable={false} />CHESS.COM BOT<span className="bot-version">v{chrome.runtime.getManifest().version}</span></h3></div>
+    <div className="bot-panel-header" onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag}><h3><img src={icon} width="16" height="16" alt="" draggable={false} />CHESS BOT<span className="bot-version">v{chrome.runtime.getManifest().version}</span></h3></div>
     <div className="bot-controls-row"><button id={state.running ? "bot-panel-stop" : "bot-panel-start"} className="bot-panel-btn" onClick={state.running ? stop : start} disabled={!state.loaded}>{state.running ? "STOP" : "START"}</button></div>
     <div id="bot-move-display"><span className="label">{state.settings.averageMove ? "AVERAGE MOVE" : "BEST MOVE"}</span><span className="value" id="best-move-text">{state.move}</span><Evaluation state={state} /></div>
     <div id="bot-status-text" className="bot-status-text" data-tone={STATUS_TONES[state.color] ?? "muted"} role="status">{state.status}</div>
@@ -152,7 +152,6 @@ export function App() {
       <AutoPlay {...controls} />
       <Toggle label="AUTO NEW MATCH" name="autoNewMatch" {...controls} />
       <Toggle label="AUTO REMATCH" name="autoRematch" {...controls} />
-      <Toggle label="ANALYZE OPPONENT" name="analyzeOpponent" {...controls} />
       <AverageMove {...controls} />
       <Toggle label="ANIMATE MOVES" name="animateMoves" {...controls} />
       <MistakeMode {...controls} />

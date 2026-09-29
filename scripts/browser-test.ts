@@ -1,12 +1,13 @@
 /** Verifies panel feature parity against the real bundled engine and a controlled board. */
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { build } from "esbuild";
 import { Chess } from "chess.js";
 import { chromium, expect, type Page } from "@playwright/test";
 import type {} from "../tests/board-fixture";
+import { verifyLichess } from "./lichess-browser-test";
 declare global { interface Window { ChessbotBoardTest: typeof import("../src/board") } }
 
 /** Exercises instant and animated promotions, delayed choosers, interruption, and recovery. */
@@ -120,7 +121,7 @@ async function count(page: Page, key: "moves" | "rematches" | "newMatches", expe
       (name) => window.chessbotFixture.counters[name], key), { timeout: 25000 }).toBe(expected);
 }
 
-/** Verifies that both sides' moves replace the previous evaluation without a zero reset. */
+/** Verifies own-turn updates preserve evaluation and opponent turns clear suggestions. */
 async function verifyEvaluationUpdates(page: Page): Promise<void> {
   const game = new Chess();
   for (const move of ["e4", "e5"]) {
@@ -150,23 +151,29 @@ async function verifyEvaluationUpdates(page: Page): Promise<void> {
     const { samples, moves } = await trace.evaluate(
       /** Stops recording and returns all intermediate visible values. */
       (recording) => { recording.observer.disconnect(); return { samples: recording.samples, moves: recording.moves }; });
-    assert.ok(samples.length > 1, `Evaluation did not update after ${move}`);
+    await trace.dispose();
     assert.ok(samples.every(
       /** Allows only the previous value and the completed new evaluation. */
       (value) => value === before || value === after), `Transient evaluation after ${move}: ${samples.join(", ")}`);
     assert.ok(moves.every(
       /** Rejects temporary empty or reset move labels during analysis. */
       (value) => value === previousMove || value === nextMove), `Transient best move after ${move}: ${moves.join(", ")}`);
+    if (game.turn() === "b") {
+      assert.equal(after, before);
+      assert.equal(nextMove, "---");
+      await expect(page.locator(".highlight[data-tone]")).toHaveCount(0);
+      continue;
+    }
+    assert.ok(samples.length > 1, `Evaluation did not update after ${move}`);
     assert.match(nextMove!, /^[A-H][1-8][A-H][1-8][QRBN]?$/);
     await expect(page.locator(".highlight[data-tone]")).toHaveCount(2);
     const suggested = game.move({ from: nextMove!.slice(0, 2).toLowerCase(), to: nextMove!.slice(2, 4).toLowerCase(), promotion: nextMove![4]?.toLowerCase() ?? "q" });
-    assert.equal(suggested.color, move === "e4" ? "b" : "w");
+    assert.equal(suggested.color, "w");
     game.undo();
     const contrast = await page.locator("#bot-eval-text").evaluate(
       /** Checks that the label inherits a pure black or white segment background. */
       (element) => ({ background: getComputedStyle(element.parentElement!).backgroundColor, color: getComputedStyle(element).color }));
     assert.ok(contrast.background === "rgb(255, 255, 255)" && contrast.color === "rgb(0, 0, 0)" || contrast.background === "rgb(0, 0, 0)" && contrast.color === "rgb(255, 255, 255)");
-    await trace.dispose();
   }
 }
 
@@ -220,6 +227,7 @@ const fixture = await build({ entryPoints: ["tests/board-fixture.ts"], bundle: t
 const fixtureScript = fixture.outputFiles[0]!.text;
 const profile = await mkdtemp(resolve(tmpdir(), "chessbot-parity-"));
 const extension = resolve("dist");
+const manifest = JSON.parse(await readFile(resolve(extension, "manifest.json"), "utf8")) as { version: string };
 const context = await chromium.launchPersistentContext(profile, { channel: "chromium", headless: true, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`], viewport: { width: 1000, height: 760 } });
 const errors: string[] = [];
 
@@ -239,12 +247,14 @@ async function openBoard(): Promise<Page> {
 
 try {
   const page = await openBoard();
+  await expect(page.locator(".bot-panel-header h3")).toContainText("CHESS BOT");
+  await expect(page.locator(".bot-version")).toHaveText(`v${manifest.version}`);
   await expect(page.locator("#best-move-text")).toHaveText("---");
   await expect(page.locator("#bot-eval-text")).toHaveText("0.00");
   await page.getByRole("button", { name: "Toggle Settings" }).click();
   await expect(page.locator("#bot-engine-select")).toHaveCount(0);
   await expect(page.locator("#bot-fen-text")).toHaveCount(0);
-  for (const name of ["AUTO PLAY", "AUTO NEW MATCH", "AUTO REMATCH", "ANALYZE OPPONENT", "AVERAGE MOVE", "ANIMATE MOVES"]) await expect(page.getByLabel(name, { exact: true })).toBeVisible();
+  for (const name of ["AUTO PLAY", "AUTO NEW MATCH", "AUTO REMATCH", "AVERAGE MOVE", "ANIMATE MOVES"]) await expect(page.getByLabel(name, { exact: true })).toBeVisible();
   await expect(page.getByLabel("ANIMATE MOVES", { exact: true })).not.toBeChecked();
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveAttribute("max", "10");
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveAttribute("step", "0.1");
@@ -377,6 +387,7 @@ try {
   await page.setViewportSize({ width: 390, height: 760 });
   const compact = await page.locator("#bot-overlay-panel").boundingBox();
   assert.ok(compact && compact.x >= 0 && compact.x + compact.width <= 390);
+  await verifyLichess(context, errors);
   assert.deepEqual(errors, []);
-  console.log("Passed: panel controls, best move, eval bar, highlights, actual auto play, STOP cancellation, rematch, new-match precedence, setting migration, saved dragging, offline engine, and tab isolation.");
+  console.log("Passed: Chess.com panel, engine, automation, promotions, persistence, offline and tab isolation; Lichess rounds, follow-up navigation, and puzzle analysis with trusted auto play.");
 } finally { await context.close(); }

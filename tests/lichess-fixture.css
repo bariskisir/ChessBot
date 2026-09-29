@@ -1,0 +1,8 @@
+/* Keeps the controlled Lichess board measurable without loading remote assets. */
+.round__app__board { width: 480px; height: 480px; }
+.cg-wrap, cg-container, cg-board { display: block; width: 480px; height: 480px; }
+cg-board { position: relative; background: #b58863; }
+cg-board > piece { position: absolute; display: block; width: 60px; height: 60px; pointer-events: none; }
+cg-board > piece.white { background: #f1f1f1; border-radius: 50%; }
+cg-board > piece.black { background: #222; border-radius: 50%; }
+.follow-up { display: flex; gap: 8px; }

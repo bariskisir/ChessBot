@@ -10,7 +10,6 @@ function settingsValidation(): void {
   assert.equal(DEFAULT_SETTINGS.depth, 7);
   assert.equal(DEFAULT_SETTINGS.autoPlayDelay, 2500);
   assert.equal(DEFAULT_SETTINGS.autoPlay, true);
-  assert.equal(DEFAULT_SETTINGS.analyzeOpponent, false);
   assert.equal(DEFAULT_SETTINGS.autoNewMatch, true);
   assert.equal(DEFAULT_SETTINGS.mistakeProbability, 25);
   assert.equal(DEFAULT_SETTINGS.mistakeKeep, 2);
@@ -19,7 +18,7 @@ function settingsValidation(): void {
   assert.equal(DEFAULT_SETTINGS.animateMoves, false);
   assert.equal(normalizeSettings({ animateMoves: true }).animateMoves, true);
   assert.equal(normalizeSettings({ animateMoves: "true" }).animateMoves, false);
-  assert.deepEqual(normalizeSettings({ depth: Infinity, time: -2, lines: 99, autoPlayDelay: NaN, autoPlay: "true", engineType: "api" }), { ...DEFAULT_SETTINGS, lines: 10 });
+  assert.deepEqual(normalizeSettings({ depth: Infinity, lines: 99, autoPlayDelay: NaN, autoPlay: "true", engineType: "api" }), { ...DEFAULT_SETTINGS, lines: 10 });
   assert.equal(normalizeSettings({ lines: -3 }).lines, 1);
   const restored = normalizeSettings({ autoPlay: false, autoNewMatch: true, autoRematch: true, autoPlayDelay: 10000, mistakeProbability: 90, panelPos: { top: "82px", left: "330px" } });
   assert.equal(restored.autoPlay, false);

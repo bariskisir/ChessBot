@@ -1,4 +1,4 @@
-/** Starts the React companion panel on Chess.com. */
+/** Starts the React companion panel on a supported chess site. */
 import { mount } from "./mount";
 import boardStyles from "./styles/board.scss";
 

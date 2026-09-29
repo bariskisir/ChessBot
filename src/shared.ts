@@ -1,18 +1,18 @@
 /** Defines the local engine protocol and validates persisted preferences. */
 export interface PanelPosition { top: string; left?: string; right?: string }
 export interface Settings {
-  depth: number; time: number; lines: number; autoPlay: boolean;
-  autoPlayDelay: number; autoNewMatch: boolean; autoRematch: boolean; analyzeOpponent: boolean;
-  averageMove: boolean; animateMoves: boolean; mistakeProbability: number; mistakeKeep: number; thinkingTime: number; panelPos: PanelPosition;
+  depth: number; lines: number; autoPlay: boolean;
+  autoPlayDelay: number; autoNewMatch: boolean; autoRematch: boolean;
+  averageMove: boolean; animateMoves: boolean; mistakeProbability: number; mistakeKeep: number; panelPos: PanelPosition;
 }
 export interface Variation { depth: number; score: number; mate: number | null; moves: string[]; nodes: number }
 export interface Analysis { fen: string; bestMove: string; variations: Variation[] }
 export interface EngineRequest { target: "background" | "engine"; action: "analyze" | "stop"; owner: string; fen: string; settings: Settings }
 export type EngineResponse = { result: Analysis } | { error: string };
 export const DEFAULT_SETTINGS: Settings = {
-  depth: 7, time: 0, lines: 10, autoPlay: true, autoPlayDelay: 2500,
-  autoNewMatch: true, autoRematch: false, analyzeOpponent: false, averageMove: true, animateMoves: false, mistakeProbability: 25,
-  mistakeKeep: 2, thinkingTime: 100, panelPos: { top: "10px", right: "10px" },
+  depth: 7, lines: 10, autoPlay: true, autoPlayDelay: 2500,
+  autoNewMatch: true, autoRematch: false, averageMove: true, animateMoves: false, mistakeProbability: 25,
+  mistakeKeep: 2, panelPos: { top: "10px", right: "10px" },
 };
 
 /** Clamps finite settings and snaps them to the control's supported step. */
@@ -28,15 +28,15 @@ export function normalizeSettings(value: unknown): Settings {
   else panelPos.right = positionValue(data.panelPos?.right, "10px");
   const legacyThreshold = (data as { mistakeThreshold?: unknown }).mistakeThreshold;
   return {
-    depth: bounded(data.depth, 7, 1, 30), time: bounded(data.time, 0, 0, 15000), lines: bounded(data.lines, 10, 1, 10),
+    depth: bounded(data.depth, 7, 1, 30), lines: bounded(data.lines, 10, 1, 10),
     autoPlay: typeof data.autoPlay === "boolean" ? data.autoPlay : true,
     autoPlayDelay: bounded(data.autoPlayDelay, 2500, 0, 10000), autoNewMatch: data.autoNewMatch !== false,
-    autoRematch: data.autoRematch === true, analyzeOpponent: data.analyzeOpponent === true,
+    autoRematch: data.autoRematch === true,
     averageMove: typeof data.averageMove === "boolean" ? data.averageMove : true,
     animateMoves: data.animateMoves === true,
     mistakeProbability: bounded(data.mistakeProbability, 25, 0, 100, 5),
     mistakeKeep: bounded(data.mistakeKeep ?? legacyThreshold, 2, 0, 5, 0.5),
-    thinkingTime: bounded(data.thinkingTime, 100, 1, 100), panelPos,
+    panelPos,
   };
 }
 

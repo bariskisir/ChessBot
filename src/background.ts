@@ -1,5 +1,7 @@
 /** Routes document-scoped requests to the local Stockfish offscreen host. */
 import type { EngineRequest, EngineResponse } from "./shared";
+import type { InputRequest } from "./input-protocol";
+import { handleInput } from "./trusted-input";
 let creating: Promise<void> | null = null;
 
 /** Creates one offscreen document when several tabs connect simultaneously. */
@@ -18,7 +20,13 @@ async function route(request: EngineRequest, sender: chrome.runtime.MessageSende
 }
 
 /** Keeps the response channel open until a bounded engine search finishes. */
-function onMessage(request: EngineRequest, sender: chrome.runtime.MessageSender, respond: (response: unknown) => void): true | undefined {
+function onMessage(request: EngineRequest | InputRequest, sender: chrome.runtime.MessageSender, respond: (response: unknown) => void): true | undefined {
+  if (request?.target === "lichess-input") {
+    handleInput(request, sender).then(respond,
+      /** Returns an input error to the content script. */
+      (error: unknown) => respond({ error: error instanceof Error ? error.message : String(error) }));
+    return true;
+  }
   if (request?.target !== "background" || !["analyze", "stop"].includes(request.action)) return;
   route(request, sender).then(respond,
     /** Reports startup and messaging errors to the requesting interface. */

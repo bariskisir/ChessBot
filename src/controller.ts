@@ -1,17 +1,22 @@
 /** Coordinates panel behavior with cancelable local analysis and automation. */
 import { Chess } from "chess.js";
-import { boardBusy, canPlay, canResumePromotion, clearHighlights, getBoard, highlight, playMove, readPosition, resumePromotion, samePosition, userColor } from "./board";
+import { boardBusy, canPlay, canResumePromotion, clearHighlights, getBoard, highlight, isCurrentPosition, readPosition, resumePromotion, samePosition, userColor } from "./board";
 import { findGameAction, type GameAction } from "./automation";
-import { analyzePosition, delay, stopAnalysis } from "./engine-client";
-import { evaluatePosition, findMistake, playerScore } from "./mistake-mode";
-import { chooseVerifiedAverageMove } from "./move-selection";
+import { delay, stopAnalysis } from "./engine-client";
+import { analyzeMove } from "./move-analysis";
+import { executeMove } from "./move-execution";
+import type { PlayerPosition } from "./providers/position";
 import { DEFAULT_SETTINGS, normalizeSettings, type Settings, type Variation, type PanelPosition } from "./shared";
 import { loadSettings, saveSettings } from "./storage";
+import { currentProvider } from "./providers";
+import { armFollowup, clearFollowup, takeFollowup } from "./followup-session";
 
 export interface PanelState {
   settings: Settings; loaded: boolean; running: boolean; fen: string;
   move: string; evaluation: Variation | undefined; status: string; color: string; player: "w" | "b";
 }
+
+type PendingAction = { kind: "move"; position: PlayerPosition } | { kind: "promotion" } | { kind: "game" };
 
 /** Owns one panel session and prevents canceled work from issuing later board actions. */
 export class Controller {
@@ -19,8 +24,7 @@ export class Controller {
   private timer: ReturnType<typeof setInterval>;
   private operation = new AbortController();
   private lastPosition = "";
-  private gameAction = false;
-  private executing = false;
+  private pendingAction: PendingAction | null = null;
   private disposed = false;
   private handledButtons = new WeakSet<HTMLElement>();
   private promotionFailed = false;
@@ -31,7 +35,7 @@ export class Controller {
   /** Observes visible board changes immediately, with periodic tracking as a fallback. */
   constructor(private readonly render: (state: PanelState) => void) {
     this.observer = new MutationObserver(this.onBoardMutation);
-    this.observer.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class", "data-figurine"] });
+    this.observer.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class", "style", "data-figurine"] });
     this.timer = setInterval(this.poll, 300);
     void this.initialize();
   }
@@ -46,7 +50,8 @@ export class Controller {
 
   /** Ignores unrelated page activity while detecting board replacement and turn changes. */
   private onBoardMutation = (records: MutationRecord[]): void => {
-    const selector = "wc-chess-board, chess-board, wc-simple-move-list, #board-layout-player-bottom, #board-layout-player-top";
+    const selector = currentProvider()?.mutationSelector;
+    if (!selector) return;
     for (const record of records) {
       const target = record.target instanceof Element ? record.target : record.target.parentElement;
       if (target?.closest(selector)) { this.schedulePoll(); return; }
@@ -79,8 +84,7 @@ export class Controller {
   private cancel(): void {
     this.operation.abort();
     this.operation = new AbortController();
-    this.gameAction = false;
-    this.executing = false;
+    this.pendingAction = null;
     this.candidatePosition = "";
     clearHighlights();
     void stopAnalysis();
@@ -88,6 +92,7 @@ export class Controller {
 
   /** Starts board analysis from the START control. */
   start = (): void => {
+    clearFollowup();
     this.cancel();
     this.promotionFailed = false;
     this.lastPosition = "";
@@ -97,6 +102,7 @@ export class Controller {
 
   /** Stops every pending action from the STOP control. */
   stop = (): void => {
+    clearFollowup();
     this.cancel();
     this.lastPosition = "";
     this.patch({ running: false, move: "---", status: "Stopped", color: "#ef4444" });
@@ -122,11 +128,22 @@ export class Controller {
     if (this.disposed || !this.state.loaded) return;
     const fen = readPosition() ?? "", player = userColor();
     if (fen !== this.state.fen || player !== this.state.player) this.patch({ fen, player });
-    if (!this.state.running || this.gameAction || this.executing) return;
+    if (fen && !this.state.running && currentProvider()?.resumeAfterNavigation && takeFollowup()) { this.start(); return; }
+    if (!this.state.running || this.pendingAction?.kind === "game") return;
+    if (this.pendingAction) {
+      const position = this.pendingAction.kind === "move" ? this.pendingAction.position : null;
+      if (position && fen && !boardBusy() && (!samePosition(fen, position.fen) || player !== position.player)) {
+        this.cancel();
+        this.lastPosition = "";
+        this.patch({ status: "Board changed - checking position...", color: "#10b981" });
+        this.schedulePoll();
+      }
+      return;
+    }
     if (this.state.settings.autoPlay && canResumePromotion()) {
       if (!this.promotionFailed) {
         this.cancel();
-        this.executing = true;
+        this.pendingAction = { kind: "promotion" };
         void this.recoverPromotion(this.operation.signal);
       }
       return;
@@ -136,7 +153,7 @@ export class Controller {
     if (!action) this.handledButtons = new WeakSet<HTMLElement>();
     if (action && !this.handledButtons.has(action.button)) {
       this.cancel();
-      this.gameAction = true;
+      this.pendingAction = { kind: "game" };
       void this.runGameAction(action, this.operation.signal);
       return;
     }
@@ -160,21 +177,26 @@ export class Controller {
     void this.analyze(fen, player, this.operation.signal);
   };
 
-  /** Repeats the 2.5-second game-over delays while honoring STOP. */
+  /** Delays follow-up actions while honoring STOP and preserving Lichess navigation. */
   private async runGameAction(action: GameAction, signal: AbortSignal): Promise<void> {
     try {
-      this.patch({ move: "---", status: `Game Over - Waiting 2.5s for ${action.name}...`, color: "#f59e0b" });
-      await delay(2500, signal);
+      const puzzle = action.kind === "puzzle";
+      const wait = puzzle ? 500 : 2500;
+      this.patch({ move: "---", status: `${puzzle ? "Puzzle" : "Game Over"} - Waiting ${wait / 1000}s for ${action.name}...`, color: "#f59e0b" });
+      await delay(wait, signal);
       const current = findGameAction(this.state.settings);
       if (current?.button !== action.button || !action.button.isConnected) return;
       this.handledButtons.add(action.button);
+      const resume = action.kind === "round" && action.resumeOnNavigation, address = location.href;
+      if (resume) armFollowup();
       action.button.click();
-      this.patch({ status: `${action.name} clicked - Waiting 2.5s...`, color: "#3b82f6" });
-      await delay(2500, signal);
+      this.patch({ status: `${action.name} clicked - Waiting ${wait / 1000}s...`, color: "#3b82f6" });
+      await delay(wait, signal);
+      if (resume && location.href === address) clearFollowup();
       this.lastPosition = "";
-      this.patch({ status: "New Game Started", color: "#10b981" });
+      this.patch({ status: puzzle ? `${action.name} clicked` : "New Game Started", color: "#10b981" });
     } catch (error) { if (!signal.aborted) this.reportError(error); }
-    finally { if (!signal.aborted) { this.gameAction = false; this.lastPosition = ""; } }
+    finally { if (!signal.aborted) { this.pendingAction = null; this.lastPosition = ""; this.schedulePoll(); } }
   }
 
   /** Recovers a stuck promotion before normal board detection rejects the dragging pawn. */
@@ -185,60 +207,48 @@ export class Controller {
       this.lastPosition = "";
     } catch (error) {
       if (!signal.aborted) { this.promotionFailed = true; this.reportError(error); }
-    } finally { if (!signal.aborted) this.executing = false; }
+    } finally { if (!signal.aborted) { this.pendingAction = null; this.schedulePoll(); } }
   }
 
-  /** Plays the weakest alternative above the keep floor, gating every eval comparison on a deep search. */
+  /** Coordinates selection and automatic input while keeping each operation tied to its position. */
   private async analyze(fen: string, player: "w" | "b", signal: AbortSignal): Promise<void> {
     const settings = this.state.settings;
     try {
       signal.throwIfAborted();
       const chess = new Chess(fen);
       if (chess.isGameOver()) { this.patch({ status: chess.isCheckmate() ? "Checkmate" : "Game Over - Draw", color: "#9ca3af" }); return; }
-      this.patch({ status: "Thinking...", color: "#3b82f6" });
-      const started = Date.now();
-      const result = await analyzePosition(fen, { ...settings, lines: settings.averageMove ? settings.lines : 1 }, signal);
-      await delay(Math.max(0, settings.thinkingTime - (Date.now() - started)), signal);
-      if (!samePosition(readPosition() ?? "", fen) || userColor() !== player) return;
-      this.patch({ status: "Evaluating position...", color: "#3b82f6" });
-      const authoritative = await evaluatePosition(fen, settings, signal);
-      if (!samePosition(readPosition() ?? "", fen) || userColor() !== player) return;
-      const evaluation = authoritative ?? result.variations[0];
+      if (chess.turn() !== player) {
+        clearHighlights();
+        this.patch({ move: "---", status: "Opponent's turn", color: "#9ca3af" });
+        return;
+      }
+      const position = { fen, player };
+      const choice = await analyzeMove(position, settings, signal,
+        /** Publishes analysis progress only while this operation still owns the panel. */
+        (progress) => { if (!signal.aborted) this.patch(progress); });
+      if (!choice) return;
+      const { move, mistake, evaluation } = choice;
       if (evaluation) this.patch({ evaluation });
-      const playerTurn = chess.turn() === player;
-      let move = result.bestMove;
-      let mistake = false;
-      if (playerTurn && settings.averageMove) {
-        this.patch({ status: "Verifying average move...", color: "#3b82f6" });
-        move = await chooseVerifiedAverageMove(fen, result.variations, player, settings, signal) ?? move;
-      }
-      const trueScore = evaluation ? playerScore(evaluation, player) : 0;
-      if (playerTurn && evaluation && trueScore >= settings.mistakeKeep && Math.random() * 100 < settings.mistakeProbability) {
-        this.patch({ status: "Attempting to find mistake...", color: "#f59e0b" });
-        const candidate = await findMistake(fen, player, settings, signal, result.bestMove, trueScore);
-        if (candidate) { move = candidate.move; mistake = true; }
-      }
-      signal.throwIfAborted();
-      if (!samePosition(readPosition() ?? "", fen) || userColor() !== player) return;
-      const showMove = playerTurn || settings.analyzeOpponent;
-      this.patch({ move: showMove ? move.toUpperCase() : "---", status: !playerTurn ? "Opponent's turn" : mistake ? "Mistake Mode!" : "Analyzing Board", color: !playerTurn ? "#9ca3af" : mistake ? "#ef4444" : "#10b981" });
-      if (!playerTurn || !settings.autoPlay || !canPlay(fen)) { if (showMove) highlight(move, mistake ? "mistake" : undefined); else clearHighlights(); return; }
+      this.patch({ move: move.toUpperCase(), status: mistake ? "Mistake Mode!" : "Analyzing Board", color: mistake ? "#ef4444" : "#10b981" });
+      if (!settings.autoPlay || !canPlay(fen)) { highlight(move, mistake ? "mistake" : undefined); return; }
       const moveDelay = Math.floor(Math.random() * (settings.autoPlayDelay + 1));
       this.patch({ status: moveDelay ? `Waiting ${Math.ceil(moveDelay / 100) / 10}s...` : "Playing move...", color: "#3b82f6" });
-      await delay(moveDelay, signal);
-      if (!samePosition(readPosition() ?? "", fen) || userColor() !== player) return;
-      this.executing = true;
-      if (!await playMove(fen, move, signal, settings.animateMoves)) return;
-      if (mistake) highlight(move, "mistake");
-      const deadline = Date.now() + 700;
-      while (Date.now() < deadline) {
-        const current = readPosition();
-        if (current && !boardBusy() && !samePosition(current, fen)) break;
-        await delay(25, signal);
+      if (moveDelay > 0) await delay(moveDelay, signal);
+      if (!isCurrentPosition(position)) return;
+      this.pendingAction = { kind: "move", position };
+      const outcome = await executeMove(position, choice, settings, signal,
+        /** Keeps late input and retry reports from overwriting STOP or a new position. */
+        (progress) => { if (!signal.aborted) this.patch(progress); });
+      signal.throwIfAborted();
+      if (!outcome.accepted) {
+        if (samePosition(readPosition() ?? "", fen)) this.patch({ status: "Move not accepted - press START to retry", color: "#f59e0b" });
+        else this.patch({ status: "Waiting for board position...", color: "#f59e0b" });
+        return;
       }
-      if (samePosition(readPosition() ?? "", fen)) this.patch({ status: "Move not accepted - press START to retry", color: "#f59e0b" });
+      this.patch({ status: "Move played - waiting for next position...", color: "#10b981" });
+      if (outcome.choice.mistake) highlight(outcome.choice.move, "mistake");
     } catch (error) { if (!signal.aborted) this.reportError(error); }
-    finally { if (!signal.aborted) { this.executing = false; this.schedulePoll(); } }
+    finally { if (!signal.aborted) { this.pendingAction = null; this.schedulePoll(); } }
   }
 
   /** Displays an actionable engine failure without dropping the panel. */

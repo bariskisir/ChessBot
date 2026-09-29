@@ -7,6 +7,29 @@ let active: Job | null = null, worker: Worker | null = null;
 let phase: "idle" | "booting" | "preparing" | "searching" | "stopping" = "idle";
 let timeout: ReturnType<typeof setTimeout> | undefined;
 let variations: Variation[] = [], verified = false;
+const engineTimeouts = { startup: 20000, searchIdle: 60000, stopping: 2000 };
+let progressNodes = 0, progressDepth = 0;
+
+/** Arms the watchdog for engine startup or a period without search progress. */
+function armTimeout(milliseconds: number): void {
+  clearTimeout(timeout);
+  timeout = setTimeout(onTimeout, milliseconds);
+}
+
+/** Allows long searches to continue while Stockfish keeps reporting useful progress. */
+function refreshSearchTimeout(): void {
+  if (phase !== "searching" || !active) return;
+  armTimeout(engineTimeouts.searchIdle);
+}
+
+/** Prevents repeated informational messages from keeping a stalled search alive indefinitely. */
+function noteSearchProgress(line: string): void {
+  const nodes = Number(/\bnodes (\d+)/.exec(line)?.[1] ?? 0), depth = Number(/\bdepth (\d+)/.exec(line)?.[1] ?? 0);
+  if (nodes <= progressNodes && depth <= progressDepth) return;
+  progressNodes = Math.max(progressNodes, nodes);
+  progressDepth = Math.max(progressDepth, depth);
+  refreshSearchTimeout();
+}
 
 /** Reuses a healthy worker only after its search output has been fully consumed. */
 function finish(response: EngineResponse, reset = false): void {
@@ -39,10 +62,12 @@ function onEngineMessage(event: MessageEvent<string>): void {
     phase = "idle";
     if (!active) { clearTimeout(timeout); pump(); return; }
     worker!.postMessage(`position fen ${active.request.fen}`);
-    const { depth, time } = active.request.settings;
+    const { depth } = active.request.settings;
     phase = "searching";
-    worker!.postMessage(`go depth ${depth}${time > 0 ? ` movetime ${time}` : ""}`);
+    refreshSearchTimeout();
+    worker!.postMessage(`go depth ${depth}`);
   } else if (line.startsWith("info ") && phase === "searching" && active) {
+    noteSearchProgress(line);
     const parsed = parseInfo(line, active.request.fen);
     if (parsed && parsed.index >= 0 && parsed.index < active.request.settings.lines) variations[parsed.index] = parsed.variation;
   } else if (line.startsWith("bestmove ")) {
@@ -58,9 +83,10 @@ function pump(): void {
   active ??= queue.shift() ?? null;
   if (!active) return;
   variations = [];
+  progressNodes = progressDepth = 0;
   try {
     new Chess(active.request.fen);
-    timeout = setTimeout(onTimeout, Math.max(20000, active.request.settings.time + 15000));
+    armTimeout(engineTimeouts.startup);
     if (!worker) {
       const current = new Worker("stockfish.js");
       worker = current;
@@ -91,8 +117,7 @@ function cancel(owner: string): void {
   job.respond({ error: "Analysis canceled." });
   if (phase === "searching") {
     phase = "stopping";
-    clearTimeout(timeout);
-    timeout = setTimeout(onTimeout, 2000);
+    armTimeout(engineTimeouts.stopping);
     worker!.postMessage("stop");
   }
 }

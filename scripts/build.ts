@@ -1,5 +1,5 @@
 /** Builds the TypeScript extension and compiles SCSS into isolated React style text. */
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build, type Plugin } from "esbuild";
@@ -23,12 +23,15 @@ async function bundle(entry: string, name: string): Promise<void> {
 
 /** Recreates only the repository's generated distribution directory. */
 async function main(): Promise<void> {
+  const metadata = JSON.parse(await readFile(resolve(root, "package.json"), "utf8")) as { version: string };
+  const manifest = JSON.parse(await readFile(resolve(root, "public/manifest.json"), "utf8")) as { version: string };
+  if (metadata.version !== manifest.version) throw new Error("Package and extension versions must agree.");
   if (output !== resolve(root, "dist") || dirname(output) !== root) throw new Error("Unsafe output directory.");
   await rm(output, { recursive: true, force: true });
   await mkdir(output, { recursive: true });
   await Promise.all([bundle("background.ts", "background.js"), bundle("engine.ts", "offscreen.js"), bundle("content.ts", "content.js")]);
   for (const name of ["manifest.json", "offscreen.html", "icons"]) await cp(resolve(root, "public", name), resolve(output, name), { recursive: true });
   await cp(resolve(root, "public/vendor"), output, { recursive: true });
-  console.log("Built ChessBot 2.5.0 → dist (React, TypeScript, SCSS, local Stockfish 19)");
+  console.log(`Built ChessBot ${manifest.version} → dist (React, TypeScript, SCSS, local Stockfish 19)`);
 }
 await main();

@@ -1,0 +1,207 @@
+/** Reproduces stalled move transports and verifies visible retry and cancellation behavior. */
+import assert from "node:assert/strict";
+import test from "node:test";
+import { runInNewContext } from "node:vm";
+import { buildSync } from "esbuild";
+import { Chess } from "chess.js";
+import type { Controller } from "../src/controller";
+import type { Provider } from "../src/providers/provider";
+import { DEFAULT_SETTINGS, type EngineRequest, type EngineResponse } from "../src/shared";
+
+const bundle = buildSync({
+  stdin: { contents: 'export { Controller } from "./src/controller"; export { chesscom } from "./src/providers/chesscom";', resolveDir: process.cwd() },
+  bundle: true, write: false, format: "iife", globalName: "ControllerTest", platform: "browser",
+}).outputFiles[0]!.text;
+
+/** Drives the production controller with a real board provider and a controllable clock. */
+function harness() {
+  let now = 0, nextTimer = 0, position = new Chess().fen(), heldSearch: number | null = null;
+  const timers = new Map<number, { at: number; callback: () => void; interval: number | null }>();
+  const statuses: string[] = [], attempts: AbortSignal[] = [], searches: EngineRequest[] = [];
+  const replies: Array<(accepted: boolean) => void> = [];
+  const engineReplies: Array<() => void> = [];
+  /** Makes deadlines advance together with the fixture's timers. */
+  class FixtureDate extends Date { static now(): number { return now; } }
+  /** Keeps DOM observation inert while regular board polling remains active. */
+  class Observer { observe(): void {} disconnect(): void {} }
+  /** Schedules timeout, frame, and interval callbacks on the same controlled clock. */
+  function schedule(callback: () => void, milliseconds: number, interval: number | null = null): number {
+    const id = ++nextTimer;
+    timers.set(id, { at: now + milliseconds, callback, interval });
+    return id;
+  }
+  const context = {
+    Date: FixtureDate, URL, AbortController,
+    location: new URL("https://www.chess.com/play/computer"),
+    document: { documentElement: {} }, MutationObserver: Observer,
+    /** Records timers without depending on wall-clock delays. */
+    setTimeout: (callback: () => void, milliseconds: number) => schedule(callback, milliseconds),
+    /** Lets the controller's fallback poll continue during stalled input. */
+    setInterval: (callback: () => void, milliseconds: number) => schedule(callback, milliseconds, milliseconds),
+    /** Cancels a queued timeout or interval. */
+    clearTimeout: (id: number) => timers.delete(id),
+    /** Removes a disposed controller's fallback poll. */
+    clearInterval: (id: number) => timers.delete(id),
+    /** Coalesces position checks on the next fixture frame. */
+    requestAnimationFrame: (callback: () => void) => schedule(callback, 16),
+    /** Removes an abandoned frame during disposal. */
+    cancelAnimationFrame: (id: number) => timers.delete(id),
+    sessionStorage: { /** Keeps follow-up state absent in the fixture. */ removeItem: () => undefined },
+    chrome: {
+      storage: { local: {
+        /** Disables random move choices and delays so timing assertions cover input alone. */
+        get: async () => ({ botSettings: { ...DEFAULT_SETTINGS, autoPlayDelay: 0, averageMove: false, mistakeProbability: 0, autoNewMatch: false } }),
+      } },
+      runtime: {
+        /** Supplies deterministic searches while counting fresh retry analyses. */
+        sendMessage: async (request: EngineRequest) => {
+          if (request.action === "stop") return { stopped: true };
+          searches.push(request);
+          const bestMove = request.fen.split(" ")[1] === "w" ? "e2e4" : "e7e5";
+          const response: EngineResponse = { result: { fen: request.fen, bestMove, variations: [{ depth: request.settings.depth, score: 0, mate: null, moves: [bestMove], nodes: 100 }] } };
+          if (searches.length === heldSearch) return new Promise<EngineResponse>(
+            /** Retains one reply to simulate a retry search that is still running. */
+            (resolve) => engineReplies.push(
+              /** Delivers the canceled search later to check stale-result isolation. */
+              () => resolve(response)));
+          return response;
+        },
+      },
+    },
+  };
+  runInNewContext(bundle, context);
+  const exports = (context as typeof context & { ControllerTest: { Controller: typeof Controller; chesscom: Provider } }).ControllerTest;
+  Object.assign(exports.chesscom, {
+    /** Reads the fixture position without needing a DOM board renderer. */
+    readPosition: () => position,
+    /** Keeps ownership fixed independently of the current turn. */
+    userColor: () => "w",
+    /** Allows input only on the fixture player's turn. */
+    canPlay: (fen: string) => fen.split(" ")[1] === "w",
+    /** Leaves board animations and promotions out of transport regressions. */
+    boardBusy: () => false,
+    /** Prevents promotion recovery from affecting normal input attempts. */
+    canResumePromotion: () => false,
+    /** Keeps unrelated game actions absent. */
+    findGameAction: () => null,
+    /** Ignores marks while preserving the real controller's cancellation path. */
+    clearHighlights: () => undefined,
+    /** Ignores opponent suggestion marks in the fixture. */
+    highlight: () => undefined,
+    /** Retains input responses to simulate a background callback that never arrives. */
+    playMove: (_fen: string, _move: string, signal: AbortSignal) => {
+      attempts.push(signal);
+      return new Promise<boolean>(
+        /** Allows a late transport acknowledgement after the controller has moved on. */
+        (resolve) => replies.push(resolve));
+    },
+  });
+  const controller = new exports.Controller(
+    /** Records user-visible states rather than private controller flags. */
+    (state) => statuses.push(state.status));
+  /** Flushes nested message and analysis promises before advancing another timer. */
+  async function flush(): Promise<void> { for (let index = 0; index < 20; index++) await Promise.resolve(); }
+  /** Advances all due input, observer, and fallback timers in chronological order. */
+  async function advance(milliseconds: number): Promise<void> {
+    await flush();
+    const target = now + milliseconds;
+    for (;;) {
+      const next = [...timers.entries()].sort(
+        /** Selects the next deadline regardless of timer creation order. */
+        (first, second) => first[1].at - second[1].at)[0];
+      if (!next || next[1].at > target) break;
+      const [id, timer] = next;
+      now = timer.at;
+      if (timer.interval === null) timers.delete(id);
+      else timer.at += timer.interval;
+      timer.callback();
+      await flush();
+    }
+    now = target;
+    await flush();
+  }
+  /** Changes only the readable board position while input responses remain pending. */
+  function setPosition(fen: string): void { position = fen; }
+  /** Holds a selected engine request without delaying later position analyses. */
+  function holdSearch(index: number): void { heldSearch = index; }
+  return { controller, statuses, attempts, searches, replies, engineReplies, advance, setPosition, holdSearch };
+}
+
+/** Converts a missing input callback into three fresh searches and a bounded final failure. */
+async function stalledInputRetries(): Promise<void> {
+  const h = harness();
+  await h.advance(0);
+  h.controller.start();
+  await h.advance(200);
+  assert.equal(h.controller.state.status, "Playing move...");
+  await h.advance(3000);
+  assert.ok(h.statuses.includes("Move not accepted - retrying (1/3)..."));
+  await h.advance(14000);
+  assert.equal(h.attempts.length, 4);
+  assert.equal(h.searches.length, 4);
+  assert.equal(h.controller.state.status, "Move not accepted - press START to retry");
+  assert.ok(h.attempts.every(
+    /** Ensures stalled inputs cannot retain live signals after their deadlines. */
+    (signal) => signal.aborted));
+  for (let retry = 1; retry <= 3; retry++) assert.ok(h.statuses.includes(`Reanalyzing position (retry ${retry}/3)...`));
+  h.controller.dispose();
+}
+test("stalled input callbacks visibly retry three times and stop", stalledInputRetries);
+
+/** Releases execution on a changed board even if the background input acknowledgement is lost. */
+async function boardChangeWithoutReply(): Promise<void> {
+  const h = harness();
+  await h.advance(0);
+  h.controller.start();
+  await h.advance(200);
+  const game = new Chess();
+  game.move("e4");
+  h.setPosition(game.fen());
+  await h.advance(500);
+  assert.equal(h.controller.state.status, "Opponent's turn");
+  assert.equal(h.attempts.length, 1);
+  assert.equal(h.attempts[0]?.aborted, true);
+  h.replies[0]?.(true);
+  await h.advance(10000);
+  assert.equal(h.controller.state.status, "Opponent's turn");
+  assert.equal(h.attempts.length, 1);
+  h.controller.dispose();
+}
+test("a board change ends Playing move without waiting for an input reply", boardChangeWithoutReply);
+
+/** Lets an opponent position cancel a retry search instead of retaining the execution lock. */
+async function boardChangeDuringRetrySearch(): Promise<void> {
+  const h = harness();
+  h.holdSearch(2);
+  await h.advance(0);
+  h.controller.start();
+  await h.advance(4500);
+  assert.equal(h.controller.state.status, "Reanalyzing position (retry 1/3)...");
+  const game = new Chess();
+  game.move("e4");
+  h.setPosition(game.fen());
+  await h.advance(500);
+  assert.equal(h.controller.state.status, "Opponent's turn");
+  h.engineReplies[0]?.();
+  await h.advance(10000);
+  assert.equal(h.attempts.length, 1);
+  assert.equal(h.controller.state.status, "Opponent's turn");
+  h.controller.dispose();
+}
+test("position changes release execution while a retry search is pending", boardChangeDuringRetrySearch);
+
+/** Cancels a stuck attempt immediately and prevents its delayed retry from issuing input. */
+async function stopDuringInput(): Promise<void> {
+  const h = harness();
+  await h.advance(0);
+  h.controller.start();
+  await h.advance(200);
+  h.controller.stop();
+  await h.advance(0);
+  assert.equal(h.attempts[0]?.aborted, true);
+  await h.advance(15000);
+  assert.equal(h.attempts.length, 1);
+  assert.equal(h.controller.state.status, "Stopped");
+  h.controller.dispose();
+}
+test("STOP cancels a stalled move without later retries", stopDuringInput);

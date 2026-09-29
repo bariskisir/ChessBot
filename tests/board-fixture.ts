@@ -209,5 +209,5 @@ new MutationObserver(
   () => updateClocks()).observe(board, { attributes: true, attributeFilter: ["class"] });
 document.body.append(board);
 injectStyles();
-if (!localStorage.getItem("bot-settings")) localStorage.setItem("bot-settings", JSON.stringify({ autoPlay: false, depth: 6, autoPlayDelay: 0, mistakeProbability: 0, analyzeOpponent: true, panelPos: { top: "10px", right: "10px" } }));
+if (!localStorage.getItem("bot-settings")) localStorage.setItem("bot-settings", JSON.stringify({ autoPlay: false, depth: 6, autoPlayDelay: 0, mistakeProbability: 0, panelPos: { top: "10px", right: "10px" } }));
 render();

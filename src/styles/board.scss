@@ -1,7 +1,8 @@
 /* Move-suggestion squares, injected once into the page world where the board lives. */
 @use "tokens" as *;
 
-div.highlight[data-tone] {
+div.highlight[data-tone],
+cg-board > square.bot-highlight[data-tone] {
   position: absolute;
   width: 12.5%;
   height: 12.5%;
