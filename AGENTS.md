@@ -8,7 +8,7 @@ ChessBot is a **Chrome Manifest V3 extension** that adds a floating analysis pan
 **Chess.com and Lichess**. The panel analyses the current board with a **local Stockfish 19 WASM**
 engine and can optionally play moves and start follow-up games automatically.
 
-- Version: `2.7.0` (see `package.json` and `public/manifest.json`).
+- Version: `2.7.1` (see `package.json` and `public/manifest.json`).
 - Engine is **100% local**. There is no remote engine, no API key, no engine selector,
   and no network calls for analysis.
 - The overlay behaves the **same regardless of opponent type** (computer bot or human).
@@ -78,8 +78,8 @@ Content/UI flow (isolated world):
 - Chess.com sends synthetic drags. Lichess Chessground rejects untrusted input, so Lichess
   Auto Play sends short trusted drags through `chrome.debugger` and requires its permission.
 - `src/mistake-mode.ts` picks the weakest alternative that keeps eval above the keep floor.
-- `src/move-selection.ts` picks a non-losing average-quality move from the engine's
-  MultiPV list when `averageMove` is enabled.
+- `src/move-selection.ts` prioritizes the shortest winning mate, otherwise picking a
+  non-losing average-quality move from the engine's MultiPV list when `averageMove` is enabled.
 
 Key behaviour in `src/controller.ts`:
 
@@ -103,8 +103,9 @@ Key behaviour in `src/controller.ts`:
   training only while Auto Play is enabled; correct feedback never triggers it.
 - Best Move with mistakes disabled uses the main search's evaluation at any selected depth.
   Average or mistake selection at depths below 15 uses an additional depth-15 evaluation.
-  Average candidates are verified at `max(15, settings.depth)` in rank order and must
-  stay at or above zero.
+- Average Move follows the shortest winning mate found in MultiPV or deep evaluation,
+  bypassing average selection and intentional mistakes. Otherwise, average candidates
+  are verified at `max(15, settings.depth)` in rank order and must stay at or above zero.
 
 ## Build details
 

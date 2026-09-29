@@ -3,7 +3,7 @@ import { Chess } from "chess.js";
 import { isCurrentPosition } from "./board";
 import { analyzePosition } from "./engine-client";
 import { evaluatePosition, findMistake, playerScore } from "./mistake-mode";
-import { chooseVerifiedAverageMove } from "./move-selection";
+import { chooseMatingMove, chooseVerifiedAverageMove } from "./move-selection";
 import type { PlayerPosition } from "./providers/position";
 import type { Settings, Variation } from "./shared";
 
@@ -11,7 +11,7 @@ export interface MoveChoice { move: string; mistake: boolean; evaluation: Variat
 export interface MoveProgress { status: string; color: string; move?: string; evaluation?: Variation }
 export type ReportProgress = (progress: MoveProgress) => void;
 
-/** Requires the selected depth and adds deep verification only for average or mistake selection. */
+/** Requires the selected depth and protects Average Move mates from averaging or mistakes. */
 export async function analyzeMove(position: PlayerPosition, settings: Settings, signal: AbortSignal, report: ReportProgress): Promise<MoveChoice | null> {
   const { fen, player } = position;
   signal.throwIfAborted();
@@ -28,13 +28,14 @@ export async function analyzeMove(position: PlayerPosition, settings: Settings, 
     evaluation = await evaluatePosition(fen, settings, signal) ?? evaluation;
     if (!isCurrentPosition(position)) return null;
   }
-  let move = result.bestMove, mistake = false;
-  if (settings.averageMove) {
+  const matingMove = settings.averageMove ? chooseMatingMove([...result.variations, evaluation], player) : null;
+  let move = matingMove ?? result.bestMove, mistake = false;
+  if (settings.averageMove && !matingMove) {
     report({ status: "Verifying average move...", color: "#3b82f6" });
     move = await chooseVerifiedAverageMove(fen, result.variations, player, settings, signal) ?? move;
   }
   const score = evaluation ? playerScore(evaluation, player) : 0;
-  if (evaluation && score >= settings.mistakeKeep && Math.random() * 100 < settings.mistakeProbability) {
+  if (!matingMove && evaluation && score >= settings.mistakeKeep && Math.random() * 100 < settings.mistakeProbability) {
     report({ status: "Attempting to find mistake...", color: "#f59e0b" });
     const candidate = await findMistake(fen, player, settings, signal, result.bestMove, score);
     if (candidate) { move = candidate.move; mistake = true; }

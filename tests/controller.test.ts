@@ -6,18 +6,18 @@ import { buildSync } from "esbuild";
 import { Chess } from "chess.js";
 import type { Controller } from "../src/controller";
 import type { Provider } from "../src/providers/provider";
-import { DEFAULT_SETTINGS, type EngineRequest, type EngineResponse } from "../src/shared";
+import { DEFAULT_SETTINGS, type EngineRequest, type EngineResponse, type Settings, type Variation } from "../src/shared";
 
 const bundle = buildSync({
   stdin: { contents: 'export { Controller } from "./src/controller"; export { chesscom } from "./src/providers/chesscom";', resolveDir: process.cwd() },
   bundle: true, write: false, format: "iife", globalName: "ControllerTest", platform: "browser",
 }).outputFiles[0]!.text;
 
-/** Drives the production controller with a real board provider and a controllable clock. */
-function harness() {
+/** Drives the production controller with controlled searches, input, and time. */
+function harness(settings: Partial<Settings> = {}, variations?: (request: EngineRequest) => Variation[]) {
   let now = 0, nextTimer = 0, position = new Chess().fen(), heldSearch: number | null = null;
   const timers = new Map<number, { at: number; callback: () => void; interval: number | null }>();
-  const statuses: string[] = [], attempts: AbortSignal[] = [], searches: EngineRequest[] = [];
+  const statuses: string[] = [], moves: string[] = [], attempts: AbortSignal[] = [], searches: EngineRequest[] = [];
   const replies: Array<(accepted: boolean) => void> = [];
   const engineReplies: Array<() => void> = [];
   /** Makes deadlines advance together with the fixture's timers. */
@@ -49,8 +49,8 @@ function harness() {
     sessionStorage: { /** Keeps follow-up state absent in the fixture. */ removeItem: () => undefined },
     chrome: {
       storage: { local: {
-        /** Disables random move choices and delays so timing assertions cover input alone. */
-        get: async () => ({ botSettings: { ...DEFAULT_SETTINGS, autoPlayDelay: 0, averageMove: false, mistakeProbability: 0, autoNewMatch: false } }),
+        /** Defaults to deterministic input while allowing move-policy regression coverage. */
+        get: async () => ({ botSettings: { ...DEFAULT_SETTINGS, autoPlayDelay: 0, averageMove: false, mistakeProbability: 0, autoNewMatch: false, ...settings } }),
       } },
       runtime: {
         /** Supplies deterministic searches while counting fresh retry analyses. */
@@ -58,7 +58,7 @@ function harness() {
           if (request.action === "stop") return { stopped: true };
           searches.push(request);
           const bestMove = request.fen.split(" ")[1] === "w" ? "e2e4" : "e7e5";
-          const response: EngineResponse = { result: { fen: request.fen, bestMove, variations: [{ depth: request.settings.depth, score: 0, mate: null, moves: [bestMove], nodes: 100 }] } };
+          const response: EngineResponse = { result: { fen: request.fen, bestMove, variations: variations?.(request) ?? [{ depth: request.settings.depth, score: 0, mate: null, moves: [bestMove], nodes: 100 }] } };
           if (searches.length === heldSearch) return new Promise<EngineResponse>(
             /** Retains one reply to simulate a retry search that is still running. */
             (resolve) => engineReplies.push(
@@ -89,8 +89,9 @@ function harness() {
     /** Ignores opponent suggestion marks in the fixture. */
     highlight: () => undefined,
     /** Retains input responses to simulate a background callback that never arrives. */
-    playMove: (_fen: string, _move: string, signal: AbortSignal) => {
+    playMove: (_fen: string, move: string, signal: AbortSignal) => {
       attempts.push(signal);
+      moves.push(move);
       return new Promise<boolean>(
         /** Allows a late transport acknowledgement after the controller has moved on. */
         (resolve) => replies.push(resolve));
@@ -124,7 +125,7 @@ function harness() {
   function setPosition(fen: string): void { position = fen; }
   /** Holds a selected engine request without delaying later position analyses. */
   function holdSearch(index: number): void { heldSearch = index; }
-  return { controller, statuses, attempts, searches, replies, engineReplies, advance, setPosition, holdSearch };
+  return { controller, statuses, moves, attempts, searches, replies, engineReplies, advance, setPosition, holdSearch };
 }
 
 /** Converts a missing input callback into three fresh searches and a bounded final failure. */
@@ -205,3 +206,45 @@ async function stopDuringInput(): Promise<void> {
   h.controller.dispose();
 }
 test("STOP cancels a stalled move without later retries", stopDuringInput);
+
+/** Prevents average selection and even guaranteed mistakes from replacing a MultiPV mate. */
+async function averageMateInput(): Promise<void> {
+  const h = harness({ averageMove: true, mistakeProbability: 100, depth: 15 },
+    /** Places the mate outside the main variation to require scanning every line. */
+    () => [
+      { depth: 15, score: 4, mate: null, moves: ["e2e4"], nodes: 100 },
+      { depth: 15, score: 0, mate: 3, moves: ["g1f3"], nodes: 100 },
+      { depth: 15, score: 2, mate: null, moves: ["d2d4"], nodes: 100 },
+    ]);
+  try {
+    await h.advance(0);
+    h.controller.start();
+    await h.advance(200);
+    assert.deepEqual(h.moves, ["g1f3"]);
+    assert.equal(h.searches.length, 1);
+    assert.equal(h.controller.state.status, "Playing move...");
+  } finally { h.controller.dispose(); }
+}
+test("Average Move plays a MultiPV mate without averaging or intentional mistakes", averageMateInput);
+
+/** Preserves a mate first discovered by the authoritative depth-15 evaluation. */
+async function deepAverageMateInput(): Promise<void> {
+  const h = harness({ averageMove: true, mistakeProbability: 100, depth: 7 },
+    /** Keeps the shallow search unaware of the mate found by its deeper follow-up. */
+    (request) => request.settings.depth === 15
+      ? [{ depth: 15, score: 0, mate: 3, moves: ["d2d4"], nodes: 100 }]
+      : [
+        { depth: 7, score: 4, mate: null, moves: ["e2e4"], nodes: 100 },
+        { depth: 7, score: 2, mate: null, moves: ["g1f3"], nodes: 100 },
+      ]);
+  try {
+    await h.advance(0);
+    h.controller.start();
+    await h.advance(200);
+    assert.deepEqual(h.moves, ["d2d4"]);
+    assert.equal(h.searches.length, 2);
+    assert.equal(h.searches[1]?.settings.depth, 15);
+    assert.equal(h.controller.state.status, "Playing move...");
+  } finally { h.controller.dispose(); }
+}
+test("Average Move follows a mate found in deep evaluation", deepAverageMateInput);

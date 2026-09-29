@@ -1,10 +1,24 @@
-/** Picks a deliberately average-quality move from the engine's MultiPV list. */
+/** Preserves forced mates before picking average-quality moves from the engine's MultiPV list. */
 import { Chess } from "chess.js";
 import { evaluatePosition, playerScore } from "./mistake-mode";
 import type { Settings, Variation } from "./shared";
 
-/** Ranks non-losing variations from closest-to-average to farthest. */
+/** Keeps the shortest winning mate, with engine order breaking equal-length ties. */
+export function chooseMatingMove(variations: Variation[], color: "w" | "b"): string | null {
+  let move: string | null = null, shortest = Infinity;
+  for (const variation of variations) {
+    const candidate = variation.moves[0];
+    if (!candidate || variation.mate === null) continue;
+    const mate = color === "w" ? variation.mate : -variation.mate;
+    if (mate > 0 && mate < shortest) { move = candidate; shortest = mate; }
+  }
+  return move;
+}
+
+/** Preserves a winning mate or ranks non-losing variations by closeness to the average. */
 export function rankAverageMoves(variations: Variation[], color: "w" | "b"): string[] {
+  const matingMove = chooseMatingMove(variations, color);
+  if (matingMove) return [matingMove];
   const scored: { move: string; score: number; order: number }[] = [];
   let total = 0;
   for (const variation of variations) {
@@ -25,13 +39,16 @@ export function rankAverageMoves(variations: Variation[], color: "w" | "b"): str
   return scored.sort(byCloseness).map(toMove);
 }
 
-/** Picks the non-losing variation whose score sits closest to the group average. */
+/** Picks a winning mate before considering the closest non-losing score to the average. */
 export function chooseAverageMove(variations: Variation[], color: "w" | "b"): string | null {
   return rankAverageMoves(variations, color)[0] ?? null;
 }
 
-/** Plays the first average-ranked move whose deep score stays at or above zero. */
+/** Follows a winning mate or verifies that an average-ranked move stays at or above zero. */
 export async function chooseVerifiedAverageMove(fen: string, variations: Variation[], color: "w" | "b", settings: Settings, signal: AbortSignal): Promise<string | null> {
+  signal.throwIfAborted();
+  const matingMove = chooseMatingMove(variations, color);
+  if (matingMove) return matingMove;
   for (const candidate of rankAverageMoves(variations, color)) {
     signal.throwIfAborted();
     const chess = new Chess(fen);
