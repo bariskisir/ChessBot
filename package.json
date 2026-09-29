@@ -1,10 +1,12 @@
 {
   "name": "chessbot",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "private": true,
-  "description": "Chess.com analysis overlay built with React, TypeScript, SCSS and local Stockfish 18.",
+  "description": "Chess.com analysis overlay built with React, TypeScript, SCSS and local Stockfish 19.",
   "type": "module",
   "scripts": {
+    "postinstall": "tsx scripts/prepare-vendor.ts",
+    "prebuild": "tsx scripts/prepare-vendor.ts",
     "icons": "tsx scripts/icons.ts",
     "build": "tsx scripts/build.ts",
     "check": "tsc --noEmit && tsx scripts/check-comments.ts",
@@ -14,17 +16,18 @@
   "dependencies": {
     "chess.js": "1.4.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "stockfish": "19.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "@types/chrome": "0.1.42",
-    "@types/node": "^26.5.1",
+    "@types/chrome": "0.3.4",
+    "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "esbuild": "0.28.1",
-    "sass": "^1.104.1",
-    "tsx": "^4.23.13",
+    "esbuild": "0.28.2",
+    "sass": "^1.105.0",
+    "tsx": "^4.23.15",
     "typescript": "6.0.3"
   }
 }

@@ -5,6 +5,11 @@ node_modules/
 dist/
 artifacts/
 
+# Generated Stockfish vendor assets (pinned npm stockfish + scripts/prepare-vendor.ts)
+public/vendor/stockfish.js
+public/vendor/stockfish.wasm
+public/vendor/STOCKFISH-LICENSE.txt
+
 # Logs
 *.log
 npm-debug.log*

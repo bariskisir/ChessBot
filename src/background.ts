@@ -7,7 +7,7 @@ async function ensureHost(): Promise<void> {
   if (creating) return creating;
   if (await chrome.offscreen.hasDocument()) return;
   if (creating) return creating;
-  creating = chrome.offscreen.createDocument({ url: "offscreen.html", reasons: [chrome.offscreen.Reason.WORKERS], justification: "Run bundled Stockfish 18 locally." });
+  creating = chrome.offscreen.createDocument({ url: "offscreen.html", reasons: [chrome.offscreen.Reason.WORKERS], justification: "Run bundled Stockfish 19 locally." });
   try { await creating; } finally { creating = null; }
 }
 

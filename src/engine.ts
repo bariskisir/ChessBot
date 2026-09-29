@@ -28,9 +28,9 @@ function onEngineMessage(event: MessageEvent<string>): void {
   if (typeof event.data !== "string") return;
   const line = event.data.trim();
   if (phase === "booting") {
-    if (line.startsWith("id name ")) verified = /^id name Stockfish 18\b/.test(line);
+    if (line.startsWith("id name ")) verified = /^id name Stockfish 19\b/.test(line);
     if (line !== "uciok") return;
-    if (!verified) { finish({ error: "The bundled engine is not Stockfish 18." }, true); return; }
+    if (!verified) { finish({ error: "The bundled engine is not Stockfish 19." }, true); return; }
     worker!.postMessage("setoption name Hash value 32");
     phase = "idle";
     clearTimeout(timeout);

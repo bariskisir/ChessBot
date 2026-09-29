@@ -9,7 +9,7 @@ ChessBot is a powerful Chrome Extension designed for **Chess.com**. It integrate
 The primary goal of this extension is **education through observation**.
 
 *   **Engine vs. Bot Matchups**: It is built to simulate matches between different engines and Chess.com's computer personalities (bots).
-*   **Learning Tool**: By watching how high-level engines (like Stockfish 18) navigate complex positions against AI, players can improve their tactical awareness and positional understanding.
+*   **Learning Tool**: By watching how high-level engines (like Stockfish 19) navigate complex positions against AI, players can improve their tactical awareness and positional understanding.
 
 > [!WARNING]
 > **STRICT FAIR PLAY POLICY**
@@ -17,7 +17,7 @@ The primary goal of this extension is **education through observation**.
 
 ## ✨ Key Features
 
-*   **Local Stockfish 18**: Runs entirely in your browser via WASM. There is no remote engine or API configuration, and all calculations stay on your device.
+*   **Local Stockfish 19**: Runs entirely in your browser via WASM. There is no remote engine or API configuration, and all calculations stay on your device.
 *   **Real-time Evaluation Bar**: A dynamic, responsive eval bar that shows the advantage from the current player's perspective.
 *   **Auto Play Mode**: Automatically execute engine moves with a customizable random delay to simulate match flows.
 *   **Auto New Match & Auto Rematch**: Detect game over and start the next game automatically, with 2.5-second delays.
@@ -44,6 +44,8 @@ npm run build
 ```
 
 Then load the generated `dist` directory as an unpacked extension.
+
+Install and build hooks copy the pinned `stockfish@19.0.0` single-threaded Lite worker, WASM binary, and license into `public/vendor`. To change the engine, bump the package version instead of editing the vendor files.
 
 ## ⚙️ How to Use
 

@@ -51,7 +51,7 @@ function harness() {
   /** Completes identity verification and the first readiness barrier. */
   function boot(): FakeWorker {
     const worker = workers[0]!;
-    worker.emit("id name Stockfish 18");
+    worker.emit("id name Stockfish 19");
     worker.emit("uciok");
     worker.emit("readyok");
     return worker;
@@ -114,7 +114,7 @@ function cancelBeforeSearch(): void {
   h.request("a", "stop");
   const second = h.request("b", "analyze", 1);
   const worker = h.workers[0]!;
-  worker.emit("id name Stockfish 18");
+  worker.emit("id name Stockfish 19");
   worker.emit("uciok");
   assert.equal(worker.commands.at(-2), "setoption name MultiPV value 1");
   h.request("b", "stop");
@@ -147,7 +147,7 @@ function stuckWorker(): void {
   old.onerror?.({ message: "late failure" });
   assert.equal(next.length, 0);
   const current = h.workers[1]!;
-  current.emit("id name Stockfish 18");
+  current.emit("id name Stockfish 19");
   current.emit("uciok");
   current.emit("readyok");
   current.emit("bestmove e2e4");

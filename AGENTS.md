@@ -5,10 +5,10 @@ Guidance for AI coding agents working in this repository. Read this before chang
 ## What this project is
 
 ChessBot is a **Chrome Manifest V3 extension** that adds a floating analysis panel to
-**Chess.com**. The panel analyses the current board with a **local Stockfish 18 WASM**
+**Chess.com**. The panel analyses the current board with a **local Stockfish 19 WASM**
 engine and can optionally play moves and start follow-up games automatically.
 
-- Version: `2.4.0` (see `package.json` and `public/manifest.json`).
+- Version: `2.5.0` (see `package.json` and `public/manifest.json`).
 - Engine is **100% local**. There is no remote engine, no API key, no engine selector,
   and no network calls for analysis.
 - The overlay behaves the **same regardless of opponent type** (computer bot or human).
@@ -48,7 +48,7 @@ Three browser entry points are bundled into `dist/`:
 | Source | Output | Role |
 | --- | --- | --- |
 | `src/background.ts` | `background.js` | MV3 service worker. Ensures the offscreen document exists and routes document-scoped engine requests to it, tagging each request with a per-tab `owner`. |
-| `src/engine.ts` | `offscreen.js` | Runs inside the offscreen document. Owns the Stockfish worker, a job queue, per-owner cancellation, a 20s watchdog, depth/movetime limits, MultiPV, and UCI identity verification (`id name Stockfish 18`). |
+| `src/engine.ts` | `offscreen.js` | Runs inside the offscreen document. Owns the Stockfish worker, a job queue, per-owner cancellation, a 20s watchdog, depth/movetime limits, MultiPV, and UCI identity verification (`id name Stockfish 19`). |
 | `src/content.ts` | `content.js` | Isolated world. Calls `mount()`. |
 
 Content/UI flow (isolated world):
@@ -96,7 +96,7 @@ to compressed CSS text (never page-global CSS). It wipes and recreates `dist/`, 
 `public/*` and `public/vendor/*`.
 
 - **Never edit `dist/`** — it is generated and deleted on every build.
-- **Never edit `public/vendor/*`** — unmodified upstream Stockfish assets and license.
+- Treat `public/vendor/stockfish.js`, `public/vendor/stockfish.wasm`, and `public/vendor/STOCKFISH-LICENSE.txt` as generated output copied unchanged from the pinned `stockfish` npm package by `scripts/prepare-vendor.ts`; change the package version instead of editing them.
 - Third-party license text lives only in `public/vendor/STOCKFISH-LICENSE.txt`.
 
 ## Code conventions
@@ -136,7 +136,7 @@ These are enforced by `scripts/check-comments.ts` and `tsc`:
 
 ## Dependency / asset policy
 
-- Runtime deps: `chess.js`, `react`, `react-dom` only. Do not add libraries without a
+- Runtime deps: `chess.js`, `react`, `react-dom`, plus the pinned `stockfish` npm package as the local-only engine source. Do not add libraries without a
   clear need; this project intentionally has no UI framework beyond React and no CSS
   framework.
 - Keep the engine local-only and the extension free of remote code.
