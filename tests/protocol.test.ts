@@ -4,7 +4,7 @@ import test from "node:test";
 import { Chess } from "chess.js";
 import { DEFAULT_SETTINGS, normalizeSettings, parseInfo } from "../src/shared";
 
-/** Ensures corrupt and obsolete settings preserve safe defaults. */
+/** Ensures corrupt settings preserve defaults and hosted providers retain separate credentials. */
 function settingsValidation(): void {
   assert.deepEqual(normalizeSettings(null), DEFAULT_SETTINGS);
   assert.equal(DEFAULT_SETTINGS.depth, 10);
@@ -15,6 +15,13 @@ function settingsValidation(): void {
   assert.equal(DEFAULT_SETTINGS.mistakeProbability, 20);
   assert.equal(DEFAULT_SETTINGS.lines, 10);
   assert.equal(DEFAULT_SETTINGS.averageMove, true);
+  assert.equal(DEFAULT_SETTINGS.layaKey, "");
+  const laya = normalizeSettings({ engine: "laya", layaKey: " laya-fixture ", openRouterKey: " jev-fixture " });
+  assert.equal(laya.engine, "laya");
+  assert.equal(laya.layaKey, "laya-fixture");
+  assert.equal(laya.openRouterKey, "jev-fixture");
+  assert.equal(normalizeSettings({ ...laya, engine: "openrouter-jev" }).layaKey, "laya-fixture");
+  assert.equal(normalizeSettings({ engine: "laya", layaKey: 12 }).layaKey, "");
   assert.deepEqual(normalizeSettings({ depth: Infinity, time: -2, lines: 99, autoPlayDelay: NaN, autoPlay: "true", engineType: "api" }), { ...DEFAULT_SETTINGS, lines: 10 });
   assert.equal(normalizeSettings({ lines: -3 }).lines, 1);
   const restored = normalizeSettings({ autoPlay: false, autoNewMatch: true, autoRematch: true, autoPlayDelay: 10000, mistakeProbability: 90, panelPos: { top: "82px", left: "330px" } });

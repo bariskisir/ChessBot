@@ -12,7 +12,7 @@ export async function loadSettings(): Promise<Settings> {
   return settings;
 }
 
-/** Saves engine preferences and the API key in local extension storage. */
+/** Saves engine preferences and separate provider keys in local extension storage. */
 export async function saveSettings(settings: Settings): Promise<void> {
   await chrome.storage.local.set({ botSettings: normalizeSettings(settings) });
 }

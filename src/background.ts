@@ -1,5 +1,6 @@
-/** Routes document-scoped requests to Stockfish or cancelable Jev decisions. */
+/** Routes document-scoped requests to Stockfish, Jev or cancelable Laya decisions. */
 import { analyzeJev } from "./jev";
+import { analyzeLaya } from "./laya";
 import { normalizeSettings } from "./shared";
 import type { EngineRequest, EngineResponse } from "./shared";
 import type { JevHistory, JevHistoryRequest, JevLog, JevLogMessage } from "./jev-log";
@@ -18,7 +19,7 @@ async function ensureHost(): Promise<void> {
   try { await creating; } finally { creating = null; }
 }
 
-/** Routes cancelable engine work and sends masked traffic only to its originating document. */
+/** Bounds queued Laya jobs and direct Jev calls independently with document-scoped cancellation. */
 async function route(request: EngineRequest, sender: chrome.runtime.MessageSender): Promise<EngineResponse | undefined> {
   const owner = `${sender.tab?.id ?? "extension"}:${sender.documentId ?? sender.url}`;
   const revision = (revisions.get(owner) ?? 0) + 1;
@@ -26,7 +27,7 @@ async function route(request: EngineRequest, sender: chrome.runtime.MessageSende
   pending.get(owner)?.abort();
   pending.delete(owner);
   const settings = normalizeSettings(request.settings);
-  if (request.action === "stop" || settings.engine === "openrouter-jev") {
+  if (request.action === "stop" || settings.engine !== "stockfish-18") {
     if (creating) await creating;
     const hasHost = await chrome.offscreen.hasDocument();
     if (revisions.get(owner) !== revision) return { error: "Analysis canceled." };
@@ -35,8 +36,8 @@ async function route(request: EngineRequest, sender: chrome.runtime.MessageSende
     if (revisions.get(owner) !== revision) return { error: "Analysis canceled." };
     const controller = new AbortController();
     pending.set(owner, controller);
-    /** Aborts stalled requests without leaving a pending move behind. */
-    const timer = setTimeout(() => controller.abort(), 25000);
+    /** Allows bounded queue time while STOP still aborts immediately. */
+    const timer = setTimeout(() => controller.abort(), settings.engine === "laya" ? 60000 : 25000);
     /** Persists masked traffic before notifying the tab, including its replacement after reload. */
     function publish(entry: JevLog): void {
       const tab = sender.tab?.id;
@@ -45,17 +46,20 @@ async function route(request: EngineRequest, sender: chrome.runtime.MessageSende
         /** Sends the current persisted snapshot to the live viewer. */
         (history) => notifyLogs(tab, history)).catch(
         /** Reports persistence errors without interrupting move selection. */
-        () => chrome.tabs.sendMessage(tab, { target: "jev-log-error", error: "Jev logs could not be saved." }).catch(
+        () => chrome.tabs.sendMessage(tab, { target: "jev-log-error", error: "Decision logs could not be saved." }).catch(
           /** A closed tab has no viewer to notify. */
           () => {}));
     }
-    try { return { result: await analyzeJev(request.fen, settings.openRouterKey, controller.signal, fetch, publish) }; }
-    catch (error) { return { error: controller.signal.aborted ? "Jev analysis canceled or timed out." : error instanceof Error ? error.message : "Jev request failed." }; }
+    const provider = settings.engine === "laya" ? "Laya" : "Jev";
+    try { return { result: await (settings.engine === "laya"
+      ? analyzeLaya(request.fen, settings.layaKey, controller.signal, fetch, publish)
+      : analyzeJev(request.fen, settings.openRouterKey, controller.signal, fetch, publish)) }; }
+    catch (error) { return { error: controller.signal.aborted ? `${provider} analysis canceled or timed out.` : error instanceof Error ? error.message : `${provider} request failed.` }; }
     finally { clearTimeout(timer); if (pending.get(owner) === controller) pending.delete(owner); }
   }
   await ensureHost();
   if (revisions.get(owner) !== revision) return { error: "Analysis canceled." };
-  return chrome.runtime.sendMessage({ ...request, settings: { ...settings, openRouterKey: "" }, target: "engine", owner });
+  return chrome.runtime.sendMessage({ ...request, settings: { ...settings, openRouterKey: "", layaKey: "" }, target: "engine", owner });
 }
 
 /** Keeps the response channel open until a bounded engine search finishes. */
@@ -84,7 +88,7 @@ function onLogMessage(request: JevHistoryRequest, sender: chrome.runtime.Message
     /** Returns the saved snapshot and updates any live viewer after clearing. */
     (history) => { respond({ history }); if (request.action === "clear") void notifyLogs(tab, history); },
     /** Keeps storage errors visible instead of silently losing history. */
-    () => respond({ error: "Jev logs could not be loaded or cleared." }));
+    () => respond({ error: "Decision logs could not be loaded or cleared." }));
   return true;
 }
 chrome.runtime.onMessage.addListener(onLogMessage);

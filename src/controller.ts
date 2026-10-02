@@ -154,14 +154,14 @@ export class Controller {
     } finally { if (!signal.aborted) this.executing = false; }
   }
 
-  /** Plays Jev's decision directly, applying score-based move selection only to Stockfish. */
+  /** Plays hosted decisions on the player's turn, reserving score-based selection for Stockfish. */
   private async analyze(fen: string, player: "w" | "b", signal: AbortSignal): Promise<void> {
     const settings = this.state.settings;
     try {
       await delay(400, signal);
       const chess = new Chess(fen);
       if (chess.isGameOver()) { this.patch({ status: chess.isCheckmate() ? "Checkmate" : "Game Over - Draw", color: "#9ca3af" }); return; }
-      if (settings.engine === "openrouter-jev" && chess.turn() !== player) {
+      if (settings.engine !== "stockfish-18" && chess.turn() !== player) {
         this.patch({ move: "---", evaluation: undefined, status: "Opponent's turn", color: "#9ca3af" });
         return;
       }

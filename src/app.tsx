@@ -64,7 +64,7 @@ function Evaluation({ state }: { state: PanelState }) {
   </div>;
 }
 
-/** Anchors the main panel and its adjacent traffic viewer to one draggable frame. */
+/** Anchors the selected provider's key, website and traffic viewer to one draggable frame. */
 export function App() {
   const [state, setState] = useState<PanelState>({ settings: DEFAULT_SETTINGS, loaded: false, running: false, fen: "", move: "---", evaluation: undefined, status: "Waiting...", color: "#9ca3af", player: "w" });
   const [advanced, setAdvanced] = useState(false);
@@ -129,14 +129,21 @@ export function App() {
     <div id="bot-advanced-panel" className={`bot-advanced-section ${advanced ? "open" : ""}`} hidden={!advanced}>
       <div className="bot-setting-item"><label htmlFor="bot-engine">ENGINE</label><select id="bot-engine" value={state.settings.engine} onChange={
         /** Switches providers and cancels any pending decision. */
-        (event) => change({ engine: event.target.value === "openrouter-jev" ? "openrouter-jev" : "stockfish-18" })}>
-        <option value="stockfish-18">stockfish-18</option><option value="openrouter-jev">openrouter-jev</option>
+        (event) => change({ engine: event.target.value === "laya" ? "laya" : event.target.value === "openrouter-jev" ? "openrouter-jev" : "stockfish-18" })}>
+        <option value="stockfish-18">stockfish-18</option><option value="openrouter-jev">openrouter-jev</option><option value="laya">laya</option>
       </select></div>
       {state.settings.engine === "openrouter-jev" && <div className="bot-setting-item">
         <label htmlFor="bot-openrouter-key">OPENROUTER API KEY</label><input id="bot-openrouter-key" type="password" autoComplete="off" spellCheck={false} value={state.settings.openRouterKey} onChange={
           /** Saves the key locally and cancels work using the old credential. */
           (event) => change({ openRouterKey: event.target.value })} />
         <p className="bot-engine-note">{JEV_MODEL}. Key saved on this device. FEN and legal moves are sent to OpenRouter.</p>
+      </div>}
+      {state.settings.engine === "laya" && <div className="bot-setting-item">
+        <label htmlFor="bot-laya-key">LAYA API KEY</label><a className="bot-provider-link" href="https://laya-api.de" target="_blank" rel="noopener noreferrer">laya-api.de</a>
+        <input id="bot-laya-key" type="password" autoComplete="off" spellCheck={false} value={state.settings.layaKey} onChange={
+          /** Saves the Laya key independently and cancels work using the old credential. */
+          (event) => change({ layaKey: event.target.value })} />
+        <p className="bot-engine-note">Key saved on this device. FEN and up to 50 legal moves are sent to Laya API.</p>
       </div>}
       <AutoPlay {...controls} />
       <Toggle label="AUTO NEW MATCH" name="autoNewMatch" {...controls} />
@@ -146,7 +153,7 @@ export function App() {
       <Slider label="MISTAKE" name="mistakeProbability" max={100} suffix="%" {...controls} />
       <Slider label="VARIATIONS" name="lines" min={1} max={10} {...controls} />
       <Slider label="DEPTH" name="depth" min={1} max={30} {...controls} /></>}
-      <JevLogs container={frame} />
+      <JevLogs container={frame} engine={state.settings.engine} />
     </div>
   </div></div>;
 }

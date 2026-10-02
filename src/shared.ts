@@ -1,7 +1,7 @@
 /** Defines the engine protocol and validates persisted preferences. */
 export interface PanelPosition { top: string; left?: string; right?: string }
 export interface Settings {
-  engine: "stockfish-18" | "openrouter-jev"; openRouterKey: string;
+  engine: "stockfish-18" | "openrouter-jev" | "laya"; openRouterKey: string; layaKey: string;
   depth: number; time: number; lines: number; autoPlay: boolean;
   autoPlayDelay: number; autoNewMatch: boolean; autoRematch: boolean; analyzeOpponent: boolean;
   averageMove: boolean; mistakeProbability: number; thinkingTime: number; panelPos: PanelPosition;
@@ -11,7 +11,7 @@ export interface Analysis { fen: string; bestMove: string; variations: Variation
 export interface EngineRequest { target: "background" | "engine"; action: "analyze" | "stop"; owner: string; fen: string; settings: Settings }
 export type EngineResponse = { result: Analysis } | { error: string };
 export const DEFAULT_SETTINGS: Settings = {
-  engine: "stockfish-18", openRouterKey: "",
+  engine: "stockfish-18", openRouterKey: "", layaKey: "",
   depth: 10, time: 0, lines: 10, autoPlay: true, autoPlayDelay: 300,
   autoNewMatch: true, autoRematch: false, analyzeOpponent: false, averageMove: true, mistakeProbability: 20,
   thinkingTime: 100, panelPos: { top: "10px", right: "10px" },
@@ -22,15 +22,16 @@ function bounded(value: unknown, fallback: number, min: number, max: number): nu
   return typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.min(max, Math.round(value))) : fallback;
 }
 
-/** Restricts engine selection and rejects malformed stored values. */
+/** Restricts engine selection and keeps each provider's saved credential independent. */
 export function normalizeSettings(value: unknown): Settings {
   const data = value && typeof value === "object" ? value as Partial<Settings> : {};
   const panelPos: PanelPosition = { top: positionValue(data.panelPos?.top, "10px") };
   if (data.panelPos?.left !== undefined) panelPos.left = positionValue(data.panelPos.left, "10px");
   else panelPos.right = positionValue(data.panelPos?.right, "10px");
   return {
-    engine: data.engine === "openrouter-jev" ? "openrouter-jev" : "stockfish-18",
+    engine: data.engine === "openrouter-jev" || data.engine === "laya" ? data.engine : "stockfish-18",
     openRouterKey: typeof data.openRouterKey === "string" ? data.openRouterKey.trim() : "",
+    layaKey: typeof data.layaKey === "string" ? data.layaKey.trim() : "",
     depth: bounded(data.depth, 10, 1, 30), time: bounded(data.time, 0, 0, 15000), lines: bounded(data.lines, 10, 1, 10),
     autoPlay: typeof data.autoPlay === "boolean" ? data.autoPlay : true,
     autoPlayDelay: bounded(data.autoPlayDelay, 300, 0, 10000), autoNewMatch: data.autoNewMatch !== false,

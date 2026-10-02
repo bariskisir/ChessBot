@@ -1,7 +1,8 @@
-/** Tracks this page's masked Jev traffic and presents a live, browsable request history. */
+/** Tracks this page's masked decision traffic in a shared, browsable request history. */
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { formatLogBody, totalJevCost, type JevHistory, type JevLog, type JevLogMessage } from "./jev-log";
+import type { Settings } from "./shared";
 
 interface LogVars extends CSSProperties { "--bot-log-height": string }
 
@@ -13,8 +14,9 @@ function LogSection({ title, children, expanded = false }: { title: string; chil
   </details>;
 }
 
-/** Restores per-tab traffic and shows reported costs with explicit history clearing. */
-export function JevLogs({ container }: { container: HTMLDivElement | null }) {
+/** Restores shared per-tab traffic with labels matching the selected decision provider. */
+export function JevLogs({ container, engine }: { container: HTMLDivElement | null; engine: Settings["engine"] }) {
+  const provider = engine === "laya" ? "Laya" : "Jev";
   const [entries, setEntries] = useState<JevLog[]>([]);
   const [open, setOpen] = useState(false);
   const [height, setHeight] = useState(0);
@@ -47,10 +49,10 @@ export function JevLogs({ container }: { container: HTMLDivElement | null }) {
       (response: { history?: JevHistory; error?: string }) => {
         if (disposed) return;
         if (response?.history) restore(response.history);
-        else setStorageError(response?.error ?? "Jev logs could not be loaded.");
+        else setStorageError(response?.error ?? "Decision logs could not be loaded.");
       }).catch(
         /** Keeps failed restoration visible in the log panel. */
-        () => { if (!disposed) setStorageError("Jev logs could not be loaded."); });
+        () => { if (!disposed) setStorageError("Decision logs could not be loaded."); });
     /** Prevents duplicate subscriptions when the overlay unmounts. */
     return () => { disposed = true; chrome.runtime.onMessage.removeListener(receive); };
   }, []);
@@ -82,16 +84,16 @@ export function JevLogs({ container }: { container: HTMLDivElement | null }) {
   async function clear(): Promise<void> {
     try {
       const response: { history?: JevHistory; error?: string } = await chrome.runtime.sendMessage({ target: "jev-log-store", action: "clear" });
-      if (!response?.history) throw new Error(response?.error ?? "Jev logs could not be cleared.");
+      if (!response?.history) throw new Error(response?.error ?? "Decision logs could not be cleared.");
       restore(response.history); setSelected(null); setAutomatic(true);
-    } catch (error) { setStorageError(error instanceof Error ? error.message : "Jev logs could not be cleared."); }
+    } catch (error) { setStorageError(error instanceof Error ? error.message : "Decision logs could not be cleared."); }
   }
 
   const style: LogVars = { "--bot-log-height": `${height}px` };
 
   return <>
-    <button id="bot-jev-logs" ref={trigger} onClick={toggle} aria-expanded={open} aria-controls="bot-jev-panel">jev-logs</button>
-    {open && container && createPortal(<aside id="bot-jev-panel" className="bot-jev-panel" style={style} aria-label="Jev logs" onKeyDown={
+    <button id="bot-jev-logs" ref={trigger} onClick={toggle} aria-expanded={open} aria-controls="bot-jev-panel">{provider.toLowerCase()}-logs</button>
+    {open && container && createPortal(<aside id="bot-jev-panel" className="bot-jev-panel" style={style} aria-label={`${provider} logs`} onKeyDown={
       /** Supports Escape without making the chess board inert. */
       (event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); } }}>
       <nav aria-label="Log navigation">
@@ -101,8 +103,8 @@ export function JevLogs({ container }: { container: HTMLDivElement | null }) {
           <div className="bot-log-follow"><button className="bot-log-arrow" onClick={next} disabled={index >= entries.length - 1 || !entry} aria-label="Next" title="Next"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg></button>
             <label><input type="checkbox" checked={automatic} onChange={follow} />Auto-follow</label>
           </div>
-          <button className="bot-log-arrow bot-log-clear" onClick={clear} aria-label="Clear Jev logs" title="Clear logs"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg></button>
-          <button className="bot-log-arrow" ref={closeButton} onClick={close} aria-label="Close Jev logs" title="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6" /></svg></button>
+          <button className="bot-log-arrow bot-log-clear" onClick={clear} aria-label={`Clear ${provider} logs`} title="Clear logs"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg></button>
+          <button className="bot-log-arrow" ref={closeButton} onClick={close} aria-label={`Close ${provider} logs`} title="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6" /></svg></button>
         </div>
       </nav>
       <div className="bot-log-content">
@@ -119,7 +121,7 @@ export function JevLogs({ container }: { container: HTMLDivElement | null }) {
             <LogSection title="Body" expanded>{entry.response ? <pre data-log="response-body">{formatLogBody(entry.response.body)}</pre> : <p>{entry.status === "pending" ? "Waiting for response…" : "No response received."}</p>}</LogSection>
           </LogSection>
         </div>
-      </div> : <p>No Jev requests yet. Calls appear here automatically when Jev plays.</p>}
+      </div> : <p>No decision requests yet. Jev and Laya calls appear here automatically.</p>}
       </div>
       <footer className="bot-log-cost" aria-label="Total cost">Total cost: ${totalJevCost(entries).toFixed(8)}</footer>
     </aside>, container)}

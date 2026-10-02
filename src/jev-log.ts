@@ -1,4 +1,4 @@
-/** Defines credential-safe Jev traffic records shared by the transport and viewer. */
+/** Defines credential-safe decision traffic records shared by Jev, Laya and the viewer. */
 export interface JevLog {
   id: string; startedAt: string; durationMs: number | null;
   status: "pending" | "success" | "error" | "canceled";
