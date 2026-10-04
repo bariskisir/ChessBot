@@ -10,6 +10,7 @@ import type {} from "../tests/board-fixture";
 import { verifyLichess } from "./lichess-browser-test";
 import { verifyEngineSelections, verifyEngineWorkers } from "./engine-browser-test";
 import { ENGINES } from "../src/engines";
+import { verifyTournaments } from "./tournament-browser-test";
 declare global { interface Window { ChessbotBoardTest: typeof import("../src/board") } }
 
 /** Exercises instant and animated promotions, delayed choosers, interruption, and recovery. */
@@ -179,6 +180,94 @@ async function verifyEvaluationUpdates(page: Page): Promise<void> {
   }
 }
 
+/** Updates Stockfish scores before a deep timed Lozza search finishes or the board changes. */
+async function verifyTimedEvaluationUpdates(page: Page): Promise<void> {
+  await page.getByLabel("ENGINE", { exact: true }).selectOption("lozza-2");
+  await page.getByLabel("AVERAGE MOVE", { exact: true }).uncheck();
+  await page.getByLabel("AUTO PLAY", { exact: true }).check();
+  await page.getByLabel("DYNAMIC DELAY", { exact: true }).check();
+  await setRange(page, "MISTAKE", "0");
+  await setRange(page, "DEPTH", "30");
+  for (const winning of [true, false]) {
+    await page.evaluate(
+      /** Creates opposite queen advantages with a running clock and no automatic opponent. */
+      (winning) => {
+        window.chessbotFixture.setFen(winning ? "rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" : "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB1KBNR w KQkq - 0 1");
+        window.chessbotFixture.setClock(180000, 2000);
+        window.chessbotFixture.resetCounters();
+      }, winning);
+    await page.getByRole("button", { name: "START", exact: true }).click();
+    await expect.poll(
+      /** Requires a changed real Stockfish score while the selected move engine is still working. */
+      async () => Number(await page.locator("#bot-eval-text").textContent()) * (winning ? 1 : -1), { timeout: 2500 }).toBeGreaterThan(2);
+    await count(page, "moves", 0);
+    await page.getByRole("button", { name: "STOP", exact: true }).click();
+  }
+  await page.getByLabel("AVERAGE MOVE", { exact: true }).check();
+  await setRange(page, "VARIATIONS", "10");
+  for (const winning of [true, false]) {
+    await page.evaluate(
+      /** Keeps the entire turn under 300ms with the default ten Lozza alternatives. */
+      (winning) => {
+        window.chessbotFixture.setFen(winning ? "rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 2" : "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB1KBNR w KQkq - 0 2");
+        window.chessbotFixture.setClock(15000, 0);
+        window.chessbotFixture.resetCounters();
+      }, winning);
+    await page.getByRole("button", { name: "START", exact: true }).click();
+    await expect.poll(
+      /** Requires a fresh signed Stockfish score even when move selection uses a fallback. */
+      async () => Number(await page.locator("#bot-eval-text").textContent()) * (winning ? 1 : -1), { timeout: 1500 }).toBeGreaterThan(2);
+    await count(page, "moves", 1);
+    await page.getByRole("button", { name: "STOP", exact: true }).click();
+  }
+  await page.getByLabel("AUTO PLAY", { exact: true }).uncheck();
+  await page.getByLabel("DYNAMIC DELAY", { exact: true }).uncheck();
+  await page.getByLabel("ENGINE", { exact: true }).selectOption("stockfish-19");
+  await page.getByLabel("AVERAGE MOVE", { exact: true }).check();
+  await setRange(page, "DEPTH", "6");
+  await page.evaluate(
+    /** Restores the untimed starting board for independent automation and promotion checks. */
+    () => { window.chessbotFixture.setClock(null); window.chessbotFixture.setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"); window.chessbotFixture.resetCounters(); });
+}
+
+/** Shows Best Move for the complete low-clock match while preserving the next game's preference. */
+async function verifyLowClockSelection(page: Page): Promise<void> {
+  await page.getByLabel("AUTO PLAY", { exact: true }).uncheck();
+  await page.getByLabel("AVERAGE MOVE", { exact: true }).check();
+  await setRange(page, "DEPTH", "6");
+  await page.evaluate(
+    /** Starts a low-clock game through the site's ordinary player-owned clock markup. */
+    () => {
+      window.chessbotFixture.setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      window.chessbotFixture.setClock(180000, 10000, 4000);
+    });
+  await page.getByRole("button", { name: "START", exact: true }).click();
+  await expect(page.locator("#bot-move-display > .label")).toHaveText("BEST MOVE");
+  await expect(page.getByLabel("AVERAGE MOVE", { exact: true })).toBeChecked();
+  await expect(page.getByRole("status")).toHaveText("Analyzing Board", { timeout: 25000 });
+  await page.getByRole("button", { name: "STOP", exact: true }).click();
+  await page.evaluate(
+    /** Gives the same game an increment and another position while retaining its selection latch. */
+    () => {
+      window.chessbotFixture.setFen("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2");
+      window.chessbotFixture.setClock(180000, 10000, 14000);
+    });
+  await page.getByRole("button", { name: "START", exact: true }).click();
+  await expect(page.locator("#bot-move-display > .label")).toHaveText("BEST MOVE");
+  await expect(page.getByRole("status")).toHaveText("Analyzing Board", { timeout: 25000 });
+  await page.getByRole("button", { name: "STOP", exact: true }).click();
+  await page.evaluate(
+    /** Starts another match on the same page with a restored opening clock. */
+    () => {
+      window.chessbotFixture.setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      window.chessbotFixture.setClock(180000, 10000);
+    });
+  await expect(page.locator("#bot-move-display > .label")).toHaveText("AVERAGE MOVE");
+  await page.evaluate(
+    /** Restores the untimed fixture for unrelated browser checks. */
+    () => window.chessbotFixture.setClock(null));
+}
+
 /** Verifies mistake probability honors the keep-eval floor in both selection modes. */
 async function verifyMistakes(page: Page): Promise<void> {
   for (const winning of [true, false]) {
@@ -244,6 +333,18 @@ async function verifyDynamicTiming(page: Page): Promise<void> {
     /** Reads the production adapter rather than relying on fixture timing helpers. */
     () => window.ChessbotBoardTest.readClock());
   assert.ok(clock && clock.initialMs === 180000 && clock.incrementMs === 2000 && clock.running);
+  const openingAt = Date.now();
+  await page.getByRole("button", { name: "START", exact: true }).click();
+  await count(page, "moves", 1);
+  assert.ok(Date.now() - openingAt < 2500, "The first game move added intentional delay");
+  await page.getByRole("button", { name: "STOP", exact: true }).click();
+  await page.evaluate(
+    /** Exercises normal waiting after the opening move rather than exempting later turns. */
+    () => {
+      window.chessbotFixture.setFen("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2");
+      window.chessbotFixture.setClock(180000, 2000);
+      window.chessbotFixture.resetCounters();
+    });
   await page.getByRole("button", { name: "START", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText(/^Waiting \d+\.\ds\.\.\.$/, { timeout: 5000 });
   await page.getByRole("button", { name: "STOP", exact: true }).click();
@@ -305,7 +406,7 @@ try {
   await expect(page.locator(".bot-panel-header h3")).toContainText("CHESS BOT");
   await expect(page.locator(".bot-version")).toHaveText(`v${manifest.version}`);
   await expect(page.locator("#best-move-text")).toHaveText("---");
-  await expect(page.locator("#bot-eval-text")).toHaveText("0.00");
+  await expect(page.locator("#bot-eval-text")).toHaveText("---");
   await page.getByRole("button", { name: "Toggle Settings" }).click();
   await expect(page.getByLabel("ENGINE", { exact: true })).toHaveValue("lozza-2");
   assert.deepEqual(await page.locator("#bot-engine-select option").allTextContents(), ENGINES.map(
@@ -315,7 +416,8 @@ try {
   const firstToggle = await page.getByLabel("AUTO PLAY", { exact: true }).boundingBox();
   assert.ok(engineSelect && firstToggle && engineSelect.y + engineSelect.height < firstToggle.y);
   await expect(page.locator("#bot-fen-text")).toHaveCount(0);
-  for (const name of ["AUTO PLAY", "DYNAMIC DELAY", "AUTO NEW MATCH", "AUTO REMATCH", "AVERAGE MOVE", "ANIMATE MOVES"]) await expect(page.getByLabel(name, { exact: true })).toBeVisible();
+  for (const name of ["AUTO PLAY", "DYNAMIC DELAY", "AUTO NEW MATCH/TOURNAMENT", "AUTO REMATCH", "AVERAGE MOVE", "ANIMATE MOVES"]) await expect(page.getByLabel(name, { exact: true })).toBeVisible();
+  await expect(page.getByLabel("AUTO NEW TOURNAMENT", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("ANIMATE MOVES", { exact: true })).not.toBeChecked();
   await expect(page.getByLabel("DYNAMIC DELAY", { exact: true })).toBeChecked();
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveCount(0);
@@ -364,9 +466,11 @@ try {
   await page.getByRole("button", { name: "STOP", exact: true }).click();
   await expect(page.locator(".highlight[data-tone]")).toHaveCount(0);
   await expect(page.locator("#best-move-text")).toHaveText("---");
+  await verifyTimedEvaluationUpdates(page);
   await verifyMistakes(page);
   await verifyPromotions(page);
   await verifyDynamicTiming(page);
+  await verifyLowClockSelection(page);
   await page.evaluate(
     /** Restores the initial board for the independent automation checks. */
     () => window.chessbotFixture.setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
@@ -380,11 +484,15 @@ try {
   await page.evaluate(
     /** Restores the initial fixture position after the automatic move check. */
     () => window.chessbotFixture.setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+  // Keep a search pending so STOP cannot race a completed shallow move.
+  await setRange(page, "DEPTH", "30");
   await page.getByRole("button", { name: "START", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Thinking...");
   await page.getByRole("button", { name: "STOP", exact: true }).click();
   await page.waitForTimeout(1200);
   await count(page, "moves", 1);
   await page.getByLabel("AUTO PLAY", { exact: true }).uncheck();
+  await setRange(page, "DEPTH", "6");
 
   // STOP must cancel a pending rematch before its 2.5-second delay elapses.
   await page.getByLabel("AUTO REMATCH", { exact: true }).check();
@@ -402,7 +510,7 @@ try {
   await page.getByRole("button", { name: "STOP", exact: true }).click();
 
   // New match retains precedence when both game-over options are enabled.
-  await page.getByLabel("AUTO NEW MATCH", { exact: true }).check();
+  await page.getByLabel("AUTO NEW MATCH/TOURNAMENT", { exact: true }).check();
   await page.evaluate(
     /** Exposes both game-over actions for the precedence check. */
     () => window.chessbotFixture.gameOver(true));
@@ -442,7 +550,7 @@ try {
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveCount(0);
   await page.getByLabel("DYNAMIC DELAY", { exact: true }).uncheck();
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveValue("3.4");
-  await expect(page.getByLabel("AUTO NEW MATCH", { exact: true })).toBeChecked();
+  await expect(page.getByLabel("AUTO NEW MATCH/TOURNAMENT", { exact: true })).toBeChecked();
   await expect(page.getByLabel("AUTO REMATCH", { exact: true })).toBeChecked();
   await expect(page.getByLabel("ANIMATE MOVES", { exact: true })).toBeChecked();
   const restored = await page.locator("#bot-overlay-panel").boundingBox();
@@ -467,7 +575,8 @@ try {
   assert.equal(timingFits, true);
   await page.getByLabel("DYNAMIC DELAY", { exact: true }).check();
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveCount(0);
+  await verifyTournaments(context, errors);
   await verifyLichess(context, errors);
   assert.deepEqual(errors, []);
-  console.log("Passed: Chess.com panel, dynamic timing, engine, automation, promotions, persistence, offline and tab isolation; Lichess clocks, rounds, follow-up navigation, and puzzle analysis with trusted auto play.");
+  console.log("Passed: Chess.com panel, dynamic timing, engine, automation, promotions, persistence, arena tournament continuation, offline and tab isolation; Lichess clocks, rounds, follow-up navigation, and puzzle analysis with trusted auto play.");
 } finally { await context.close(); }

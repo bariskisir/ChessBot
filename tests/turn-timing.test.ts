@@ -2,21 +2,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { calculateDynamicTurnBudget, type TurnClock } from "../src/timing/dynamic-turn-budget";
-import { TurnTiming } from "../src/timing/turn-timing";
+import { Chess } from "chess.js";
+import { isFirstGameMove, TurnTiming } from "../src/timing/turn-timing";
 
 const opening: TurnClock = { remainingMs: 180000, initialMs: 180000, incrementMs: 2000, completedMoves: 0, materialPhase: 1, quietHalfMoves: 0, lagMs: 0, running: true };
 
-/** Uses the same opening forecast for every base time and increment, not selected presets. */
+/** Uses a fifty-move opening forecast for every base time and increment. */
 function incrementAllocation(): void {
   for (const [initialMs, incrementMs] of [[60000, 0], [120000, 1000], [180000, 0], [180000, 2000], [300000, 3000], [600000, 5000], [1800000, 20000]]) {
     const budget = calculateDynamicTurnBudget({ ...opening, initialMs: initialMs!, remainingMs: initialMs!, incrementMs: incrementMs! });
-    assert.equal(budget.remainingMoves, 40);
-    assert.equal(budget.totalMs, Math.floor((initialMs! - budget.reserveMs + incrementMs! * 39) / 40));
+    assert.equal(budget.remainingMoves, 50);
+    assert.equal(budget.totalMs, Math.floor((initialMs! - budget.reserveMs + incrementMs! * 49) / 50));
   }
 }
 test("opening allocation includes future increments across different time controls", incrementAllocation);
 
-/** Retains a rolling forecast and positive clock through games longer than forty moves. */
+/** Retains a rolling forecast and positive clock through games longer than fifty moves. */
 function longGames(): void {
   for (const incrementMs of [0, 1000, 2000, 3000, 20000]) {
     let remainingMs = opening.initialMs;
@@ -28,8 +29,8 @@ function longGames(): void {
       remainingMs += incrementMs;
     }
   }
-  const endgame = calculateDynamicTurnBudget({ ...opening, completedMoves: 35, materialPhase: 0 });
-  const quiet = calculateDynamicTurnBudget({ ...opening, completedMoves: 35, quietHalfMoves: 64 });
+  const endgame = calculateDynamicTurnBudget({ ...opening, completedMoves: 45, materialPhase: 0 });
+  const quiet = calculateDynamicTurnBudget({ ...opening, completedMoves: 45, quietHalfMoves: 64 });
   assert.ok(quiet.remainingMoves > endgame.remainingMoves);
   assert.ok(quiet.totalMs < endgame.totalMs);
   assert.equal(calculateDynamicTurnBudget({ ...opening, remainingMs: 2000 }).totalMs, 0);
@@ -62,19 +63,19 @@ function fixture(dynamicDelay = true) {
   };
 }
 
-/** Deducts settling, queue, and analysis from both dynamic and manual targets. */
+/** Deducts elapsed work from the fifty-move dynamic forecast and manual targets. */
 async function elapsedAccounting(): Promise<void> {
   const dynamic = fixture();
-  assert.equal(dynamic.timing.remainingAnalysisMs(), 6315);
+  assert.equal(dynamic.timing.remainingAnalysisMs(), 5452);
   dynamic.elapse(2000);
-  assert.equal(dynamic.timing.remainingAnalysisMs(), 4315);
+  assert.equal(dynamic.timing.remainingAnalysisMs(), 3452);
   await dynamic.timing.wait(new AbortController().signal,
     /** Countdown reporting does not advance the clock itself. */
     () => undefined);
-  assert.equal(dynamic.elapsed(), 6315);
+  assert.equal(dynamic.elapsed(), 5452);
   assert.equal(dynamic.waits.reduce(
     /** Totals only the extra wait after analysis. */
-    (sum, ms) => sum + ms, 0), 4315);
+    (sum, ms) => sum + ms, 0), 3452);
   assert.equal(dynamic.randomCalls(), 0);
   const manual = fixture(false);
   manual.elapse(2000);
@@ -91,3 +92,20 @@ async function elapsedAccounting(): Promise<void> {
   assert.equal(untimed.remainingAnalysisMs(), null);
 }
 test("turn targets include elapsed work and dynamic mode ignores manual delay", elapsedAccounting);
+
+/** Covers both opening colors and later positions whose omitted history gives a move-one counter. */
+function openingTurns(): void {
+  const game = new Chess();
+  assert.equal(isFirstGameMove(game.fen()), true);
+  for (const move of game.moves()) {
+    game.move(move);
+    assert.equal(isFirstGameMove(game.fen()), true);
+    game.undo();
+  }
+  game.move("e4");
+  game.move("e5");
+  assert.equal(isFirstGameMove(game.fen()), false);
+  assert.equal(isFirstGameMove(game.fen().replace(/ 2$/, " 1")), false);
+  assert.equal(isFirstGameMove("7k/5Q2/6K1/8/8/8/8/8 w - - 0 1"), false);
+}
+test("only actual White and Black opening turns bypass move delay", openingTurns);

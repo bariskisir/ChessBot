@@ -2,9 +2,12 @@
 import { Chess } from "chess.js";
 interface LozzaRuntime {
   rootNode: { getNextMove: () => number };
+  uci: { post: (message: string) => void; silent?: number };
   board: { formatMove?: (move: number, format: number) => string; mvFmt: number };
 }
 declare const lozza: LozzaRuntime;
+declare let lozzaHost: number;
+declare const HOST_CONSOLE: number;
 declare const UCI_FMT: number;
 declare const MATE: number;
 declare const MINMATE: number;
@@ -14,12 +17,17 @@ const scope = self as unknown as DedicatedWorkerGlobalScope;
 const engine = new URL(scope.location.href).searchParams.get("engine");
 if (engine !== "lozza-2" && engine !== "lozza-5") throw new Error("Unknown bundled Lozza version.");
 scope.importScripts(`${engine}.js`);
+// UCI clients own the board; browser mode applies bestMove even when it is zero.
+lozzaHost = HOST_CONSOLE;
+/** Preserves worker transport while disabling upstream browser board mutations. */
+lozza.uci.post = (message: string): void => { if (!lozza.uci.silent) scope.postMessage(message); };
 lozza.board.mvFmt = UCI_FMT;
 const handleCommand = scope.onmessage!;
 const send = scope.postMessage.bind(scope);
 const nextMove = lozza.rootNode.getNextMove.bind(lozza.rootNode);
 let lines = 1, rank = 1, position = "", candidate = "", primary = "", collecting = false;
-let legalMoves = 0;
+let legalMoves: string[] = [];
+let emergencyMove = "0000";
 let hasVariation = false, fallbackScore = "cp 0";
 const excluded = new Set<string>();
 
@@ -62,7 +70,7 @@ scope.postMessage = (message: unknown): void => {
 /** Dispatches one synchronous UCI command to the original version-specific handler. */
 function command(data: string): void {
   handleCommand.call(scope, new MessageEvent<string>("message", { data }));
-  // Position loading restores the browser's SAN format in both upstream versions.
+  // Keep PVs in coordinates after version-specific initialization.
   lozza.board.mvFmt = UCI_FMT;
 }
 
@@ -74,10 +82,9 @@ function search(data: string): void {
   const deadline = moveTime ? Date.now() + moveTime : null;
   collecting = true;
   try {
-    const count = Math.min(lines, legalMoves);
+    const count = Math.min(lines, legalMoves.length);
     for (rank = 1; rank <= count; rank++) {
-      const remaining = deadline === null ? null : deadline - Date.now();
-      if (rank > 1 && remaining !== null && remaining <= 0) break;
+      if (rank > 1 && deadline !== null && deadline <= Date.now()) break;
       candidate = "";
       hasVariation = false;
       fallbackScore = "cp 0";
@@ -86,8 +93,10 @@ function search(data: string): void {
         command("ucinewgame");
         command(position);
       }
+      const remaining = deadline === null ? null : deadline - Date.now();
+      if (rank > 1 && remaining !== null && remaining <= 0) break;
       command(remaining === null ? data : data.replace(/\bmovetime \d+/, `movetime ${Math.max(1, Math.floor(remaining / (count - rank + 1)))}`));
-      if (!candidate || candidate === "0000" || candidate === "(none)" || excluded.has(candidate)) break;
+      if (!legalMoves.includes(candidate) || excluded.has(candidate)) break;
       primary ||= candidate;
       excluded.add(candidate);
     }
@@ -95,7 +104,8 @@ function search(data: string): void {
     collecting = false;
     excluded.clear();
   }
-  send(`bestmove ${primary || "0000"}`);
+  // A deadline can expire before any root move is scored; do not invent a variation.
+  send(`bestmove ${primary || (deadline === null ? "0000" : emergencyMove)}`);
 }
 
 /** Handles adapter options and delegates ordinary UCI commands to the pinned engine. */
@@ -105,7 +115,13 @@ scope.onmessage = (event: MessageEvent<unknown>): void => {
   if (/^setoption name MultiPV value \d+$/.test(data)) { lines = Math.max(1, Math.min(10, Number(data.split(" ").at(-1)))); return; }
   if (data.startsWith("position ")) {
     position = data;
-    legalMoves = new Chess(data.startsWith("position fen ") ? data.slice(13) : undefined).moves().length;
+    const moves = new Chess(data.startsWith("position fen ") ? data.slice(13) : undefined).moves({ verbose: true });
+    legalMoves = moves.map(
+      /** Keeps emergency choices legal, including underpromotions. */
+      (move) => `${move.from}${move.to}${move.promotion ?? ""}`);
+    emergencyMove = legalMoves[moves.findIndex(
+      /** Preserves an immediate mate when no search result survives the deadline. */
+      (move) => move.san.endsWith("#"))] ?? legalMoves[0] ?? "0000";
   }
   if (data.startsWith("go ")) search(data);
   else command(data);

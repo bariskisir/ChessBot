@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { Chess } from "chess.js";
 import { expect, type BrowserContext, type Page } from "@playwright/test";
 import { ENGINES, type EngineDefinition } from "../src/engines";
-import { parseInfo } from "../src/shared";
+import { DEFAULT_SETTINGS, parseInfo, type Analysis, type EngineResponse } from "../src/shared";
 
 const startFen = new Chess().fen();
 
@@ -41,6 +41,21 @@ async function search(page: Page, engine: EngineDefinition, fen: string, lines: 
         };
         worker.postMessage("uci");
       }), { workerUrl: engine.worker, fen, lines, movetime });
+}
+
+/** Sends real offscreen jobs so worker switching and startup costs are included in coverage. */
+async function hostSearch(page: Page, engine: EngineDefinition, fen: string, milliseconds?: number): Promise<Analysis> {
+  // Runtime messages exclude their sender, so originate requests outside the host document.
+  const service = page.context().serviceWorkers()[0]!;
+  const response: EngineResponse | undefined = await service.evaluate(
+    /** Uses the document-owned production scheduler instead of creating an independent worker. */
+    ({ engine, fen, settings, milliseconds }) => chrome.runtime.sendMessage({
+      target: "engine", owner: "browser-worker-regression", action: "analyze", fen,
+      settings: { ...settings, engine, depth: milliseconds === undefined ? 4 : 15, lines: 1 },
+      ...(milliseconds === undefined ? {} : { deadline: Date.now() + milliseconds }),
+    }), { engine: engine.id, fen, settings: DEFAULT_SETTINGS, milliseconds });
+  assert.ok(response && "result" in response, response && "error" in response ? response.error : "Missing analysis");
+  return response.result;
 }
 
 /** Verifies identity, legal root variations, mate scores, promotions and deadlines for all versions. */
@@ -81,12 +96,31 @@ export async function verifyEngineWorkers(context: BrowserContext): Promise<void
       }
       const limited = await search(page, engine, startFen, 3, 150);
       assert.ok(limited.elapsed < 5000, `${engine.name}: ignored movetime`);
+      if (engine.id.startsWith("lozza")) {
+        const expired = await search(page, engine, startFen, 10, 1);
+        const move = expired.output.at(-1)?.split(" ")[1] ?? "";
+        assert.ok(new Chess(startFen).move({ from: move.slice(0, 2), to: move.slice(2, 4) }), `${engine.name}: empty deadline returned an illegal move`);
+      }
       const move = [...limited.output].reverse().find(
         /** Extracts the legal fallback produced within the bounded search. */
         (line) => line.startsWith("bestmove "))?.split(" ")[1]!;
       assert.ok(new Chess().move({ from: move.slice(0, 2), to: move.slice(2, 4), promotion: move[4] ?? "q" }));
       console.log(`Passed ${engine.name}: real worker, White/Black analysis, MultiPV, promotion, mate and movetime.`);
     }
+    const evaluator = ENGINES.find(
+      /** Selects the fixed score engine for the alternating-worker regression. */
+      (engine) => engine.id === "stockfish-19")!;
+    await hostSearch(page, evaluator, startFen);
+    for (const engine of ENGINES) {
+      if (engine === evaluator) continue;
+      for (const winning of [true, false]) {
+        await hostSearch(page, engine, startFen);
+        const fen = winning ? "rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" : "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB1KBNR w KQkq - 0 1";
+        const result = await hostSearch(page, evaluator, fen, 100);
+        assert.ok((result.variations[0]?.score ?? 0) * (winning ? 1 : -1) > 2, `${engine.name}: switching exhausted the Stockfish evaluation deadline`);
+      }
+    }
+    console.log("Passed alternating offscreen workers: 100ms Stockfish evaluations survive every move-engine switch.");
   } finally { await page.close(); await context.setOffline(false); }
 }
 

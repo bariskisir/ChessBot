@@ -41,8 +41,8 @@ async function attemptMove(fen: string, move: string, settings: Settings, signal
   }
 }
 
-/** Recomputes retries within the same turn budget without adding another artificial delay. */
-export async function executeMove(position: PlayerPosition, initial: MoveChoice, settings: Settings, signal: AbortSignal, report: ReportProgress, budget?: MoveSelectionBudget): Promise<MoveOutcome> {
+/** Recomputes retries using the live match policy within the same turn budget. */
+export async function executeMove(position: PlayerPosition, initial: MoveChoice, settings: Settings, signal: AbortSignal, report: ReportProgress, budget?: MoveSelectionBudget, getSettings?: () => Settings, onInput?: (pending: boolean) => void): Promise<MoveOutcome> {
   let choice = initial;
   for (let attempt = 0; attempt <= retryLimit; attempt++) {
     signal.throwIfAborted();
@@ -52,8 +52,9 @@ export async function executeMove(position: PlayerPosition, initial: MoveChoice,
       await delay(retryDelay, signal);
       if (!isCurrentPosition(position) || !canPlay(position.fen)) return { accepted: false, choice };
       const retryStatus = `Reanalyzing position (retry ${attempt}/${retryLimit})...`;
+      const retrySettings = getSettings?.() ?? settings;
       /** Uses the same selection deadline after a rejected or stalled input. */
-      const select = (scope: AbortSignal) => analyzeMove(position, settings, scope,
+      const select = (scope: AbortSignal) => analyzeMove(position, retrySettings, scope,
         /** Keeps the visible retry number through every stage of move selection. */
         (progress) => report({ ...progress, status: retryStatus }), budget);
       const candidate = budget ? await budget.run(signal, select) : await select(signal);
@@ -62,7 +63,9 @@ export async function executeMove(position: PlayerPosition, initial: MoveChoice,
     }
     const status = attempt ? `Playing move (retry ${attempt}/${retryLimit})...` : "Playing move...";
     report({ move: choice.move.toUpperCase(), status, color: "#3b82f6", ...(choice.evaluation ? { evaluation: choice.evaluation } : {}) });
-    if (await attemptMove(position.fen, choice.move, settings, signal)) return { accepted: true, choice };
+    onInput?.(true);
+    try { if (await attemptMove(position.fen, choice.move, settings, signal)) return { accepted: true, choice }; }
+    finally { onInput?.(false); }
     if (attempt < retryLimit) report({ status: `Move not accepted - retrying (${attempt + 1}/${retryLimit})...`, color: "#f59e0b" });
   }
   return { accepted: false, choice };

@@ -1,7 +1,7 @@
-/** Selects probability-based safe mistakes using the selected local engine. */
+/** Selects local-engine mistakes whose Stockfish 19 evaluation preserves the keep floor. */
 import { Chess } from "chess.js";
 import { analyzePosition } from "./engine-client";
-import { getEngine } from "./engines";
+import { EVALUATION_ENGINE } from "./engines";
 import type { SearchDeadline, Settings, Variation } from "./shared";
 export type MistakeType = "mistake";
 export interface MistakeResult { move: string; score: number; type: MistakeType }
@@ -13,21 +13,22 @@ export function playerScore(variation: Variation | undefined, color: "w" | "b"):
   return color === "w" ? whiteScore : -whiteScore;
 }
 
-/** Keeps the weakest candidate that never drops the player below the keep floor. */
+/** Keeps the weakest candidate with a finite score at or above the keep floor. */
 export function chooseMistake(current: MistakeResult | null, move: string, score: number, keep: number): MistakeResult | null {
-  if (score < keep) return current;
+  if (!Number.isFinite(score) || score < keep) return current;
   return !current || score < current.score ? { move, score, type: "mistake" } : current;
 }
 
-/** Uses authoritative depth within the same turn deadline as the main search. */
+/** Uses Stockfish 19 at verification depth within the main search's turn deadline. */
 export async function evaluatePosition(fen: string, settings: Settings, signal: AbortSignal, getDeadline?: SearchDeadline): Promise<Variation | undefined> {
-  const result = await analyzePosition(fen, { ...settings, depth: Math.max(getEngine(settings.engine).verificationDepth, settings.depth), lines: 1 }, signal, getDeadline);
+  const result = await analyzePosition(fen, { ...settings, engine: EVALUATION_ENGINE.id, depth: Math.max(EVALUATION_ENGINE.verificationDepth, settings.depth), lines: 1 }, signal, getDeadline);
   return result.variations[0];
 }
 
-/** Checks intentional mistakes within the remaining turn budget before accepting one. */
+/** Requires completed Stockfish 19 post-move verification before an intentional mistake. */
 export async function findMistake(fen: string, color: "w" | "b", settings: Settings, signal: AbortSignal, bestMove: string, currentScore: number, getDeadline?: SearchDeadline): Promise<MistakeResult | null> {
   const candidates = await analyzePosition(fen, { ...settings, depth: 3, lines: 10 }, signal, getDeadline);
+  const verificationDepth = Math.max(EVALUATION_ENGINE.verificationDepth, settings.depth);
   let selected: MistakeResult | null = null;
   for (const candidate of candidates.variations) {
     const move = candidate.moves[0];
@@ -36,9 +37,12 @@ export async function findMistake(fen: string, color: "w" | "b", settings: Setti
     const chess = new Chess(fen);
     try { chess.move({ from: move.slice(0, 2), to: move.slice(2, 4), promotion: move[4] ?? "q" }); } catch { continue; }
     if (chess.isCheckmate()) continue;
-    const result = await analyzePosition(chess.fen(), { ...settings, lines: 1 }, signal, getDeadline);
-    if (!result.variations[0] && !chess.isDraw()) continue;
-    const score = playerScore(result.variations[0], color);
+    let score = 0;
+    if (!chess.isDraw()) {
+      const verified = await evaluatePosition(chess.fen(), settings, signal, getDeadline);
+      if (!verified || verified.depth < verificationDepth && verified.mate === null) continue;
+      score = playerScore(verified, color);
+    }
     if (score >= currentScore) continue;
     selected = chooseMistake(selected, move, score, settings.mistakeKeep);
     if (selected && selected.score <= settings.mistakeKeep) return selected;

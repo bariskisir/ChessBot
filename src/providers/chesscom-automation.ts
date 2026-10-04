@@ -2,15 +2,16 @@
 import type { Settings } from "../shared";
 import { isShown, visible } from "./dom";
 import type { GameAction } from "./provider";
+import { findArenaNextButton } from "./chesscom-arena-dom";
 
 /** Reads the clickable label with a layout-independent fallback. */
 function label(button: HTMLElement): string {
   return (button.innerText || button.textContent || "").trim();
 }
 
-/** Finds regular and arena new-match controls while excluding arena search indicators. */
+/** Finds regular new-match controls separately from arena matchmaking. */
 function findNewButton(): HTMLElement | null {
-  const legacy = visible('[data-cy="game-over-modal-new-game-button"], [data-cy="next-arena-game-button"], .game-over-arena-button-component button.game-over-arena-button-button:not(.game-over-arena-button-finding)');
+  const legacy = visible('[data-cy="game-over-modal-new-game-button"]');
   if (legacy) return legacy;
   const scoped = document.querySelectorAll<HTMLElement>(
     ".game-over-modal-shell-buttons button, .game-over-secondary-actions-row-component button, .game-over-modal-component button, .board-modal-component button",
@@ -39,8 +40,10 @@ function findRematchButton(): HTMLElement | null {
   return null;
 }
 
-/** Selects the new-match action before rematch when both are enabled. */
+/** Lets arena continuation use its own retry policy before regular new games and rematches. */
 export function findGameAction(settings: Settings): GameAction | null {
+  const arena = findArenaNextButton();
+  if (arena && settings.autoNewMatch) return { button: arena, name: "Next Arena Game", kind: "arena" };
   const next = findNewButton();
   if (settings.autoNewMatch && next) return { button: next, name: "New Game", kind: "round" };
   if (!settings.autoRematch) return null;

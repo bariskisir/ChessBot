@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChessBot",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "minimum_chrome_version": "120",
   "description": "Educational Chess.com and Lichess analysis extension with local Stockfish and Lozza chess engines.",
   "icons": {

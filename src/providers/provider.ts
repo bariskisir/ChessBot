@@ -5,6 +5,7 @@ import type { GameClock } from "./clock";
 
 export type GameAction = { button: HTMLElement } & (
   { kind: "round"; name: "New Game" | "Rematch"; resumeOnNavigation?: true } |
+  { kind: "arena"; name: "Next Arena Game" } |
   { kind: "puzzle"; name: "View Solution" | "Continue Training" }
 );
 

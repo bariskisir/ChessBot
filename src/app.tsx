@@ -44,14 +44,14 @@ function Slider({ label, name, max, min = 0, step = 1, scale = 1, suffix = "", s
     (event) => change({ [name]: Number(event.target.value) * scale })} /></div>;
 }
 
-/** Pairs automatic play with dynamic timing and reveals manual delay on a separate row. */
+/** Pairs automatic play with a fifty-move clock forecast and an optional manual delay. */
 function AutoPlay({ settings, change }: SettingProps) {
   const seconds = settings.autoPlayDelay / 1000;
   return <div className="bot-setting-item bot-toggle-slider-row bot-auto-play-row">
     <label className="bot-checkbox-label"><input type="checkbox" checked={settings.autoPlay} onChange={
       /** Toggles automatic play and enables or disables its delay control. */
       (event) => change({ autoPlay: event.target.checked })} /><span>AUTO PLAY</span></label>
-    <label className="bot-checkbox-label" title="Distribute match time across a rolling 40-move forecast, including the increment."><input type="checkbox" checked={settings.dynamicDelay} onChange={
+    <label className="bot-checkbox-label" title="Distribute match time across a rolling 50-move forecast, including the increment."><input type="checkbox" checked={settings.dynamicDelay} onChange={
       /** Persists automatic clock allocation without discarding the manual delay preference. */
       (event) => change({ dynamicDelay: event.target.checked })} /><span>DYNAMIC DELAY</span></label>
     {!settings.dynamicDelay && <label className="bot-inline-slider-label bot-random-delay" htmlFor="bot-autoPlayDelay"><span>RANDOM DELAY</span><span>{seconds}s</span><input id="bot-autoPlayDelay" aria-label="RANDOM DELAY" type="range" min="0" max="10" step="0.1" value={seconds} disabled={!settings.autoPlay} onChange={
@@ -64,7 +64,7 @@ function AutoPlay({ settings, change }: SettingProps) {
 function AverageMove({ settings, change }: SettingProps) {
   const lines = settings.averageMove ? settings.lines : 1;
   return <div className="bot-setting-item bot-toggle-slider-row">
-    <label className="bot-checkbox-label"><input type="checkbox" checked={settings.averageMove} onChange={
+    <label className="bot-checkbox-label" title="Below 5 seconds, use Best Move for the rest of this match."><input type="checkbox" checked={settings.averageMove} onChange={
       /** Enables candidate selection without discarding the saved variation count. */
       (event) => change({ averageMove: event.target.checked })} /><span>AVERAGE MOVE</span></label>
     <label className="bot-inline-slider-label" htmlFor="bot-lines"><span>VARIATIONS</span><span>{lines}</span><input id="bot-lines" aria-label="VARIATIONS" type="range" min="1" max="10" step="1" value={lines} disabled={!settings.averageMove} onChange={
@@ -85,13 +85,13 @@ function MistakeMode({ settings, change }: SettingProps) {
   </div>;
 }
 
-/** Renders the white/black evaluation bar and board-oriented presentation. */
+/** Shows Stockfish scores in board orientation and distinguishes an unavailable evaluation. */
 function Evaluation({ state }: { state: PanelState }) {
   const evaluation = state.evaluation;
   const score = evaluation?.score ?? 0, mate = evaluation?.mate;
   const hasMate = mate !== undefined && mate !== null;
   const white = hasMate ? mate > 0 ? 100 : 0 : 50 + Math.max(-10, Math.min(10, score)) * 5;
-  const text = hasMate ? `${mate < 0 ? "-" : ""}M${Math.abs(mate)}` : `${score > 0 ? "+" : ""}${score.toFixed(2)}`;
+  const text = !evaluation ? "---" : hasMate ? `${mate < 0 ? "-" : ""}M${Math.abs(mate)}` : `${score > 0 ? "+" : ""}${score.toFixed(2)}`;
   const whiteLabel = white >= 50;
   const labelFirst = whiteLabel === (state.player === "w");
   const bar: EvalVars = { "--bot-white": `${white}%` };
@@ -106,7 +106,7 @@ function Evaluation({ state }: { state: PanelState }) {
 
 /** Groups paired settings and labels the displayed move with the selected selection mode. */
 export function App() {
-  const [state, setState] = useState<PanelState>({ settings: DEFAULT_SETTINGS, loaded: false, running: false, fen: "", move: "---", evaluation: undefined, status: "Waiting...", color: "#9ca3af", player: "w" });
+  const [state, setState] = useState<PanelState>({ settings: DEFAULT_SETTINGS, loaded: false, running: false, fen: "", move: "---", evaluation: undefined, status: "Waiting...", color: "#9ca3af", player: "w", averageMoveDisabled: false });
   const [advanced, setAdvanced] = useState(false);
   const [position, setPosition] = useState<PanelPosition | null>(null);
   const controller = useRef<Controller | null>(null);
@@ -162,13 +162,13 @@ export function App() {
   return <div id="bot-overlay-panel" ref={panel} data-anchored={saved.left ? "left" : "right"} style={style}>
     <div className="bot-panel-header" onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag}><h3><img src={icon} width="16" height="16" alt="" draggable={false} />CHESS BOT<span className="bot-version">v{chrome.runtime.getManifest().version}</span></h3></div>
     <div className="bot-controls-row"><button id={state.running ? "bot-panel-stop" : "bot-panel-start"} className="bot-panel-btn" onClick={state.running ? stop : start} disabled={!state.loaded}>{state.running ? "STOP" : "START"}</button></div>
-    <div id="bot-move-display"><span className="label">{state.settings.averageMove ? "AVERAGE MOVE" : "BEST MOVE"}</span><span className="value" id="best-move-text">{state.move}</span><Evaluation state={state} /></div>
+    <div id="bot-move-display"><span className="label">{state.settings.averageMove && !state.averageMoveDisabled ? "AVERAGE MOVE" : "BEST MOVE"}</span><span className="value" id="best-move-text">{state.move}</span><Evaluation state={state} /></div>
     <div id="bot-status-text" className="bot-status-text" data-tone={STATUS_TONES[state.color] ?? "muted"} role="status">{state.status}</div>
     <div id="bot-panel-footer"><button id="bot-advanced-toggle" className={advanced ? "open" : ""} title="Toggle Settings" aria-label="Toggle Settings" aria-expanded={advanced} aria-controls="bot-advanced-panel" onClick={toggleAdvanced}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6" /></svg></button></div>
     <div id="bot-advanced-panel" className={`bot-advanced-section ${advanced ? "open" : ""}`} hidden={!advanced}>
       <EngineSelect {...controls} />
       <AutoPlay {...controls} />
-      <Toggle label="AUTO NEW MATCH" name="autoNewMatch" {...controls} />
+      <Toggle label="AUTO NEW MATCH/TOURNAMENT" name="autoNewMatch" {...controls} />
       <Toggle label="AUTO REMATCH" name="autoRematch" {...controls} />
       <AverageMove {...controls} />
       <Toggle label="ANIMATE MOVES" name="animateMoves" {...controls} />

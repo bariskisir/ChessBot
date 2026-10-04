@@ -55,6 +55,8 @@ function positionValue(value: unknown, fallback: string): string {
 export function parseInfo(line: string, fen: string): { index: number; variation: Variation } | null {
   const score = /\bscore (cp|mate) (-?\d+)/.exec(line), pv = /\bpv (.+)/.exec(line);
   if (!score || !pv || /\b(lowerbound|upperbound)\b/.test(line)) return null;
+  // Stockfish emits an unsearched zero and its emergency move when startup exhausts movetime.
+  if (score[1] === "cp" && /\bseldepth 0\b/.test(line) && Number(/\bnodes (\d+)/.exec(line)?.[1] ?? 0) <= 1) return null;
   const value = Number(score[2]) * (fen.split(" ")[1] === "b" ? -1 : 1);
   return { index: Number(/\bmultipv (\d+)/.exec(line)?.[1] ?? 1) - 1, variation: {
     depth: Number(/\bdepth (\d+)/.exec(line)?.[1] ?? 0), score: score[1] === "cp" ? value / 100 : 0,

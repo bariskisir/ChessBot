@@ -1,7 +1,7 @@
 /** Bounds the complete selection policy while retaining a legal move for time trouble. */
 import { Chess } from "chess.js";
 import type { MoveChoice } from "../move-analysis";
-import type { SearchDeadline } from "../shared";
+import type { SearchDeadline, Variation } from "../shared";
 
 /** Lets queued or deep searches finish only within the current turn's live budget. */
 export class MoveSelectionBudget {
@@ -23,6 +23,15 @@ export class MoveSelectionBudget {
       this.fallback = choice;
     } catch { /* Stale or partial output cannot replace a legal move. */ }
   }
+
+  /** Keeps the current Stockfish score available even if move selection cannot finish. */
+  rememberEvaluation(evaluation: Variation): void { this.fallback = { ...this.fallback, evaluation }; }
+
+  /** Gives evaluation an early share while preserving most of the turn for move selection. */
+  getEvaluationDeadline: SearchDeadline = () => {
+    const remainingMs = this.remainingMs();
+    return remainingMs === null ? null : Date.now() + Math.max(1, Math.min(1000, Math.floor((remainingMs - 100) / 4)));
+  };
 
   /** Leaves time for bestmove delivery before the application-level cutoff. */
   getSearchDeadline: SearchDeadline = () => {

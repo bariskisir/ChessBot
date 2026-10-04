@@ -16,6 +16,9 @@ export const ENGINES: readonly EngineDefinition[] = [
     elo: 3792, ratingNote: "Full Stockfish 19 CCRL Blitz reference: 3792. This Lite build uses a smaller network and has no separate verified rating.", interruptible: true, verificationDepth: 15 },
 ];
 
+/** Keeps displayed evaluations and move-safety checks on one bundled Stockfish scale. */
+export const EVALUATION_ENGINE = getEngine("stockfish-19");
+
 /** Resolves persisted identifiers only to a bundled engine, defaulting to Lozza 2. */
 export function getEngine(value: unknown): EngineDefinition {
   return ENGINES.find(

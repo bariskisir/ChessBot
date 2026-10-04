@@ -1,7 +1,22 @@
 /** Includes position settling, queued analysis, and move selection in one cancelable turn target. */
+import { Chess } from "chess.js";
 import { delay } from "../engine-client";
 import type { Settings } from "../shared";
 import { calculateDynamicTurnBudget, transmissionReserveMs, type TurnClock } from "./dynamic-turn-budget";
+
+/** Recognizes opening turns without treating a site's estimated move-one counter as proof. */
+export function isFirstGameMove(fen: string): boolean {
+  const game = new Chess(fen), opening = new Chess();
+  if (game.moveNumber() !== 1) return false;
+  const placement = fen.split(" ")[0];
+  if (game.turn() === "w") return placement === opening.fen().split(" ")[0];
+  for (const move of opening.moves()) {
+    opening.move(move);
+    if (placement === opening.fen().split(" ")[0]) return true;
+    opening.undo();
+  }
+  return false;
+}
 
 /** Rechecks the current clock throughout analysis and intentional waiting. */
 export class TurnTiming {

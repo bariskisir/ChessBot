@@ -69,3 +69,12 @@ function partialLines(): void {
   assert.equal(parseInfo("info score cp 100 lowerbound pv e2e4", new Chess().fen()), null);
 }
 test("partial and bounded UCI output does not replace an exact line", partialLines);
+
+/** Distinguishes Stockfish's unsearched fallback from a completed equal-position score. */
+function unsearchedFallback(): void {
+  const fen = new Chess().fen();
+  assert.equal(parseInfo("info depth 1 seldepth 0 multipv 1 score cp 0 nodes 1 time 5 pv a2a3", fen), null);
+  assert.equal(parseInfo("info depth 1 seldepth 2 multipv 1 score cp 0 nodes 20 pv e2e4", fen)?.variation.score, 0);
+  assert.equal(parseInfo("info depth 1 seldepth 0 score mate 1 nodes 1 pv e2e4", fen)?.variation.mate, 1);
+}
+test("unsearched emergency output cannot reset the evaluation to zero", unsearchedFallback);

@@ -4,14 +4,14 @@ export interface TurnClock {
   materialPhase: number; quietHalfMoves: number; lagMs: number; running: boolean;
 }
 export interface DynamicTurnBudget { totalMs: number; analysisMs: number; remainingMoves: number; reserveMs: number }
-const expectedGameMoves = 40;
+const expectedGameMoves = 50;
 
 /** Reserves time for input delivery before any future increment can be earned. */
 export function transmissionReserveMs(lagMs: number): number {
   return Math.max(250, Math.ceil(Math.max(0, lagMs) * 2 + 100));
 }
 
-/** Extends the forecast before move forty so long games never spend their entire clock. */
+/** Extends the forecast before move fifty so long games never spend their entire clock. */
 export function calculateDynamicTurnBudget(clock: TurnClock): DynamicTurnBudget {
   const phase = Math.max(0, Math.min(1, clock.materialPhase));
   const quietExtension = Math.min(8, Math.floor(Math.max(0, clock.quietHalfMoves) / 8));

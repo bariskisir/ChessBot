@@ -119,7 +119,7 @@ export async function verifyLichess(context: BrowserContext, errors: string[]): 
       () => window.lichessFixture.counts.moves), { timeout: 25000 }).toBe(1);
   await lichessPage.getByRole("button", { name: "STOP", exact: true }).click();
   await lichessPage.getByLabel("AUTO PLAY", { exact: true }).uncheck();
-  await lichessPage.getByLabel("AUTO NEW MATCH", { exact: true }).check();
+  await lichessPage.getByLabel("AUTO NEW MATCH/TOURNAMENT", { exact: true }).check();
   await lichessPage.getByLabel("AUTO REMATCH", { exact: true }).check();
   await lichessPage.evaluate(
     /** Makes both Lichess follow-up controls available after the game. */
@@ -130,7 +130,7 @@ export async function verifyLichess(context: BrowserContext, errors: string[]): 
   await expect(lichessPage.getByRole("status")).toHaveText("Analyzing Board", { timeout: 25000 });
   await lichessPage.getByRole("button", { name: "STOP", exact: true }).click();
   await lichessPage.getByRole("button", { name: "Toggle Settings" }).click();
-  await lichessPage.getByLabel("AUTO NEW MATCH", { exact: true }).uncheck();
+  await lichessPage.getByLabel("AUTO NEW MATCH/TOURNAMENT", { exact: true }).uncheck();
   await lichessPage.evaluate(
     /** Exposes a rematch after the new-opponent precedence check. */
     () => window.lichessFixture.gameOver());

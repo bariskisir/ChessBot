@@ -1,11 +1,12 @@
 /** Serializes document-owned searches and switches between verified local engine workers. */
 import { Chess } from "chess.js";
-import { getEngine, type EngineDefinition } from "./engines";
+import { EVALUATION_ENGINE, getEngine, type EngineDefinition, type EngineId } from "./engines";
 import { normalizeSettings, parseInfo, type EngineRequest, type EngineResponse, type Variation } from "./shared";
 interface Job { request: EngineRequest; respond: (response: EngineResponse) => void }
 const queue: Job[] = [];
 let active: Job | null = null, worker: Worker | null = null;
 let workerEngine: EngineDefinition | null = null;
+const warmWorkers = new Map<EngineId, Worker>();
 let phase: "idle" | "booting" | "preparing" | "searching" | "stopping" = "idle";
 let timeout: ReturnType<typeof setTimeout> | undefined;
 let variations: Variation[] = [], verified = false;
@@ -92,7 +93,23 @@ function pump(): void {
     new Chess(active.request.fen);
     armTimeout(engineTimeouts.startup);
     const selected = getEngine(active.request.settings.engine);
-    if (worker && workerEngine?.id !== selected.id) { worker.terminate(); worker = null; }
+    if (worker && workerEngine?.id !== selected.id) {
+      // Retain verified workers so alternating evaluation and move searches do not repeat startup.
+      if (workerEngine && verified) warmWorkers.set(workerEngine.id, worker);
+      else worker.terminate();
+      worker = null;
+      workerEngine = null;
+      verified = false;
+    }
+    for (const [id, cached] of warmWorkers) {
+      if (selected.id !== EVALUATION_ENGINE.id && id !== EVALUATION_ENGINE.id && id !== selected.id) { cached.terminate(); warmWorkers.delete(id); }
+    }
+    if (!worker && warmWorkers.has(selected.id)) {
+      worker = warmWorkers.get(selected.id)!;
+      warmWorkers.delete(selected.id);
+      workerEngine = selected;
+      verified = true;
+    }
     if (!worker) {
       workerEngine = selected;
       const current = new Worker(selected.worker);
@@ -101,8 +118,11 @@ function pump(): void {
       verified = false;
       /** Ignores already-queued callbacks from workers replaced after failure. */
       current.onmessage = (event) => { if (worker === current) onEngineMessage(event); };
-      /** Reports failures only for the currently owned worker. */
-      current.onerror = (event) => { if (worker === current) finish({ error: `${selected.name} could not start: ${event.message}` }, true); };
+      /** Resets failed active searches and discards failed parked workers. */
+      current.onerror = (event) => {
+        if (worker === current) finish({ error: `${selected.name} ${phase === "booting" ? "could not start" : "search failed"}: ${event.message}` }, true);
+        else if (warmWorkers.get(selected.id) === current) { current.terminate(); warmWorkers.delete(selected.id); }
+      };
       current.postMessage("uci");
     } else {
       phase = "preparing";

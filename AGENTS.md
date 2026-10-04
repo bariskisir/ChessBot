@@ -8,7 +8,7 @@ ChessBot is a **Chrome Manifest V3 extension** that adds a floating analysis pan
 **Chess.com and Lichess**. The panel analyses the current board with selectable **local Stockfish and Lozza engines**
 and can optionally play moves and start follow-up games automatically.
 
-- Version: `2.9.0` (see `package.json` and `public/manifest.json`).
+- Version: `2.10.0` (see `package.json` and `public/manifest.json`).
 - Engines are **100% local**. Lozza 2 is the default; the advanced settings menu lists
   Lozza 2, Lozza 5, Stockfish 10 and Stockfish 19 Lite by increasing reference Elo.
   There is no remote engine, no API key, and no network calls for analysis.
@@ -62,7 +62,8 @@ Content/UI flow (isolated world):
 - `src/shared.ts` holds protocol/types, `DEFAULT_SETTINGS`, `normalizeSettings`, and
   `parseInfo` (UCI → Variation, scores normalised to White).
 - `src/engines.ts` holds the fixed local worker catalogue, version identities, reference
-  ratings and verification depths. Worker URLs must never come from persisted settings.
+  ratings, verification depths, and the fixed Stockfish 19 Lite evaluation engine.
+  Worker URLs must never come from persisted settings.
 - `src/storage.ts` persists `Settings` in `chrome.storage.local` and migrates the
   legacy `bot-settings` localStorage entry on first load.
 - `src/providers/` contains the provider contract, host selection, shared FEN utilities,
@@ -71,7 +72,8 @@ Content/UI flow (isolated world):
   and training from SAN and follows known positions when round history is hidden.
   Racer and Storm use visible last-move markers and legal continuations, with estimated
   FEN state when a new puzzle omits its history.
-- `src/move-analysis.ts` applies deep evaluation, average selection, and mistake settings.
+- `src/move-analysis.ts` combines selected-engine moves with Stockfish 19 Lite evaluation,
+  average selection, and mistake settings.
   `src/move-execution.ts` owns input confirmation and three retries at one-second intervals;
   each retry performs fresh analysis using the complete selection policy.
 - `src/input-protocol.ts`, `src/input-client.ts`, and `src/trusted-input.ts` share typed
@@ -79,6 +81,12 @@ Content/UI flow (isolated world):
 - `src/board.ts` and `src/automation.ts` delegate common operations to the selected provider.
 - `src/followup-session.ts` carries a one-use Lichess follow-up marker through same-tab
   navigation so an automatically started round resumes the running controller.
+- `src/providers/chesscom-arena.ts` retries arena matchmaking three times at three-second
+  intervals before selecting another started, joinable standard arena of the same time class
+  with the greatest remaining duration. Unknown classes default to blitz. Tournament lookup
+  uses fixed Chess.com service URLs; native Join/Next Game controls own registration and queueing.
+  `src/tournament-session.ts` preserves continuation and game-scoped public arena metadata
+  across navigation. STOP clears continuation; active queues never trigger another tournament.
 - Chess.com sends synthetic drags. Lichess Chessground rejects untrusted input, so Lichess
   Auto Play sends short trusted drags through `chrome.debugger` and requires its permission.
 - `src/mistake-mode.ts` picks the weakest alternative that keeps eval above the keep floor.
@@ -92,7 +100,9 @@ Key behaviour in `src/controller.ts`:
   across checks, and recorded history must agree with the visible pieces.
 - The selected engine stays alive between searches. Stockfish cancellation drains output
   through `bestmove`; Lozza's synchronous searches are canceled by terminating the worker.
-  Switching engines replaces the worker before starting the next queued job.
+  The host retains at most two verified workers: Stockfish 19 for evaluation and the
+  selected move engine. Evaluation/move switches reuse them after output is consumed;
+  selecting another move engine discards the old alternative before the next job.
 - Move confirmation observes board changes independently of input acknowledgements.
   Input expires after 3 seconds; acknowledged input has a 700ms confirmation deadline.
   STOP or expiry aborts the provider gesture and its pending trusted-input request.
@@ -100,22 +110,39 @@ Key behaviour in `src/controller.ts`:
   settings, new positions, and game-over actions all cancel pending work.
 - One `pendingAction` union distinguishes move input, promotion recovery, and follow-up
   actions; a `WeakSet` of handled buttons prevents repeat clicks and replayed actions.
+  Arena results also use the page and position to retain their three-attempt limit when
+  the site replaces the button. Auto New Match/Tournament also controls arena tournament continuation;
+  disabling it cancels retries and clears pending arena navigation.
 - Analysis and Auto Play only run on the player's turn; opponent positions issue no
   engine requests and display no suggested move.
 - Searches use depth limits. Timed Auto Play can use the best available legal move when
   its complete turn budget expires; analysis without a clock still requires the selected depth.
 - Dynamic Delay defaults on and distributes live match time over an increment-aware,
-  rolling 40-move forecast. Settling, queued searches, and all verification share one turn
+  rolling 50-move forecast. Settling, queued searches, and all verification share one turn
   target. Its toggle sits beside Auto Play; disabling it reveals Random Delay on the next row.
-  Manual random targets also deduct elapsed work. Untimed dynamic games add no waiting.
+  Manual random targets also deduct elapsed work. Each player's first game move skips
+  Dynamic and Random Delay. Untimed dynamic games add no waiting.
 - In Lichess training, failed feedback opens the solution and then clicks Continue
   training only while Auto Play is enabled; correct feedback never triggers it.
-- Best Move with mistakes disabled uses the main search's evaluation at any selected depth.
-  Stockfish average or mistake selection below depth 15 adds a depth-15 evaluation;
-  Lozza uses the selected depth. Proved mates and sole legal moves can finish early.
+- Displayed position evaluation and average/mistake verification always use Stockfish 19
+  Lite at a minimum requested depth of 15, or the selected depth when higher. The selected
+  engine supplies move candidates. Timed turns start with a Stockfish evaluation bounded
+  to a quarter of the remaining budget and at most one second; untimed turns reuse an
+  adequate Stockfish 19 main search or evaluate separately before other main searches.
+  Evaluation is published immediately and retained in timed fallbacks; a shallower main
+  search cannot replace a deeper evaluation. Unsearched emergency scores cannot replace
+  the bar with zero. An unavailable score displays `---`.
+  Incomplete post-move verification cannot authorize an intentional mistake. Timed
+  fallback moves never publish another engine's score. Proved mates and sole legal moves
+  can finish early.
 - Average Move follows the shortest winning mate found in MultiPV or deep evaluation,
   bypassing average selection and intentional mistakes. Otherwise, average candidates
-  are verified at the engine's verification depth in rank order and must stay at or above zero.
+  are verified with Stockfish 19 Lite in rank order and must stay at or above zero.
+- `src/timing/match-selection.ts` disables averaging after the player's clock falls below
+  five seconds, retaining Best Move for that match through increments, retries, settings,
+  and STOP/START. New game routes, confirmed follow-ups, and fresh opening clocks restore
+  the saved preference. Active average searches are canceled; gestures already sent retain
+  their confirmation deadline and subsequent retries use the live match policy.
 
 ## Build details
 
@@ -166,6 +193,9 @@ These are enforced by `scripts/check-comments.ts` and `tsc`:
 - Intercepted Lichess fixtures verify round and training board reading, both
   orientations, trusted input, partial history, and follow-up controls through
   `scripts/lichess-browser-test.ts`.
+- `scripts/tournament-browser-test.ts` intercepts all Chess.com requests to verify arena
+  retry spacing, time-class and remaining-duration selection, navigation continuation,
+  disabled settings, active queue handling, missing metadata, and STOP cancellation.
 - `scripts/engine-browser-test.ts` verifies every real bundled worker's identity, legal
   White/Black analysis, MultiPV, promotions, mates and deadlines, plus persisted engine
   selection and Auto Play through the real offscreen host.

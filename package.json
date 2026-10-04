@@ -1,6 +1,6 @@
 {
   "name": "chessbot",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "private": true,
   "description": "Chess.com and Lichess analysis overlay with React, TypeScript, SCSS and local Stockfish and Lozza engines.",
   "type": "module",

@@ -6,7 +6,7 @@ import type { Provider } from "./provider";
 
 export const chesscom: Provider = {
   name: "chess.com",
-  mutationSelector: "wc-chess-board, chess-board, wc-simple-move-list, #board-layout-player-bottom, #board-layout-player-top",
+  mutationSelector: "wc-chess-board, chess-board, wc-simple-move-list, #board-layout-player-bottom, #board-layout-player-top, .game-over-arena-button-component, .arena-footer-component",
   ...board,
   readClock,
   findGameAction,

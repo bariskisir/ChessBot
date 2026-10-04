@@ -275,7 +275,7 @@ function switchEngines(): void {
   const next = h.request("b", "analyze", 2, undefined, "lozza-2");
   old.emit("bestmove e2e4");
   assert.equal(first.length, 1);
-  assert.equal(old.terminated, true);
+  assert.equal(old.terminated, false);
   const current = h.workers[1]!;
   assert.equal(current.url, getEngine("lozza-2").worker);
   old.emit("bestmove a2a3");
@@ -288,6 +288,98 @@ function switchEngines(): void {
   assert.equal(next.length, 1);
 }
 test("queued owners switch engines without accepting stale output", switchEngines);
+
+/** Reuses both evaluator and move workers while retaining at most one alternative engine. */
+function alternatingEvaluation(): void {
+  const h = harness();
+  h.request("a");
+  const evaluator = h.boot();
+  evaluator.emit("bestmove e2e4");
+  h.request("a", "analyze", 1, undefined, "lozza-2");
+  const lozza = h.workers[1]!;
+  lozza.emit("id name Lozza 2.0");
+  lozza.emit("uciok");
+  lozza.emit("readyok");
+  lozza.emit("bestmove e2e4");
+  for (let turn = 0; turn < 3; turn++) {
+    const evaluation = h.request("a", "analyze", 1);
+    assert.equal(evaluator.terminated, false);
+    assert.equal(lozza.terminated, false);
+    assert.equal(h.workers.length, 2);
+    evaluator.emit("readyok");
+    evaluator.emit("info depth 7 score cp 250 nodes 100 pv e2e4");
+    evaluator.emit("bestmove e2e4");
+    assert.equal(evaluation.length, 1);
+    const moves = h.request("a", "analyze", 1, undefined, "lozza-2");
+    lozza.emit("readyok");
+    lozza.emit("bestmove e2e4");
+    assert.equal(moves.length, 1);
+  }
+  h.request("a", "analyze", 1, undefined, "stockfish-10");
+  assert.equal(lozza.terminated, true);
+  assert.equal(evaluator.terminated, false);
+  const replacement = h.workers[2]!;
+  replacement.emit("id name Stockfish.js 10");
+  replacement.emit("uciok");
+  replacement.emit("readyok");
+  replacement.emit("bestmove e2e4");
+  const next = h.request("a");
+  evaluator.emit("readyok");
+  evaluator.emit("bestmove d2d4");
+  assert.equal(next.length, 1);
+  assert.equal(h.workers.length, 3);
+}
+test("evaluation and selected-engine searches reuse two workers across turns", alternatingEvaluation);
+
+/** Cancels synchronous move work without discarding the parked Stockfish evaluator. */
+function cachedCancellation(): void {
+  const h = harness();
+  h.request("a");
+  const evaluator = h.boot();
+  evaluator.emit("bestmove e2e4");
+  const first = h.request("a", "analyze", 1, undefined, "lozza-2");
+  const lozza = h.workers[1]!;
+  lozza.emit("id name Lozza 2.0");
+  lozza.emit("uciok");
+  lozza.emit("readyok");
+  const next = h.request("b");
+  h.request("a", "stop");
+  assert.equal(first.length, 1);
+  assert.equal(lozza.terminated, true);
+  assert.equal(evaluator.terminated, false);
+  assert.equal(h.workers.length, 2);
+  lozza.emit("bestmove a2a3");
+  evaluator.emit("readyok");
+  evaluator.emit("bestmove e2e4");
+  assert.equal(next.length, 1);
+}
+test("canceling Lozza preserves the warm evaluator for the next owner", cachedCancellation);
+
+/** Removes a failed idle evaluator without interrupting the active move worker. */
+function cachedFailure(): void {
+  const h = harness();
+  h.request("a");
+  const evaluator = h.boot();
+  evaluator.emit("bestmove e2e4");
+  const moves = h.request("a", "analyze", 1, undefined, "lozza-2");
+  const lozza = h.workers[1]!;
+  lozza.emit("id name Lozza 2.0");
+  lozza.emit("uciok");
+  lozza.emit("readyok");
+  evaluator.onerror?.({ message: "idle failure" });
+  assert.equal(evaluator.terminated, true);
+  assert.equal(lozza.terminated, false);
+  lozza.emit("bestmove e2e4");
+  assert.equal(moves.length, 1);
+  const next = h.request("a");
+  const replacement = h.workers[2]!;
+  replacement.emit("id name Stockfish 19");
+  replacement.emit("uciok");
+  replacement.emit("readyok");
+  replacement.emit("bestmove e2e4");
+  assert.equal(next.length, 1);
+}
+test("a failed parked evaluator is replaced without failing the move search", cachedFailure);
 
 /** Terminates synchronous Lozza searches immediately so another tab can run without a stop watchdog. */
 function cancelLozza(): void {
