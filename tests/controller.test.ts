@@ -6,6 +6,7 @@ import { buildSync } from "esbuild";
 import { Chess } from "chess.js";
 import type { Controller } from "../src/controller";
 import type { Provider } from "../src/providers/provider";
+import type { GameClock } from "../src/providers/clock";
 import { DEFAULT_SETTINGS, type EngineRequest, type EngineResponse, type Settings, type Variation } from "../src/shared";
 
 const bundle = buildSync({
@@ -20,6 +21,7 @@ function harness(settings: Partial<Settings> = {}, variations?: (request: Engine
   const statuses: string[] = [], moves: string[] = [], attempts: AbortSignal[] = [], searches: EngineRequest[] = [];
   const replies: Array<(accepted: boolean) => void> = [];
   const engineReplies: Array<() => void> = [];
+  let clock: GameClock | null = null, clockUpdatedAt = 0;
   /** Makes deadlines advance together with the fixture's timers. */
   class FixtureDate extends Date { static now(): number { return now; } }
   /** Keeps DOM observation inert while regular board polling remains active. */
@@ -31,7 +33,7 @@ function harness(settings: Partial<Settings> = {}, variations?: (request: Engine
     return id;
   }
   const context = {
-    Date: FixtureDate, URL, AbortController,
+    Date: FixtureDate, URL, AbortController, AbortSignal, DOMException,
     location: new URL("https://www.chess.com/play/computer"),
     document: { documentElement: {} }, MutationObserver: Observer,
     /** Records timers without depending on wall-clock delays. */
@@ -76,6 +78,8 @@ function harness(settings: Partial<Settings> = {}, variations?: (request: Engine
     readPosition: () => position,
     /** Keeps ownership fixed independently of the current turn. */
     userColor: () => "w",
+    /** Decrements the configured clock so queue and search time remain visible. */
+    readClock: () => clock ? { ...clock, remainingMs: Math.max(0, clock.remainingMs - (clock.running ? now - clockUpdatedAt : 0)) } : null,
     /** Allows input only on the fixture player's turn. */
     canPlay: (fen: string) => fen.split(" ")[1] === "w",
     /** Leaves board animations and promotions out of transport regressions. */
@@ -125,7 +129,9 @@ function harness(settings: Partial<Settings> = {}, variations?: (request: Engine
   function setPosition(fen: string): void { position = fen; }
   /** Holds a selected engine request without delaying later position analyses. */
   function holdSearch(index: number): void { heldSearch = index; }
-  return { controller, statuses, moves, attempts, searches, replies, engineReplies, advance, setPosition, holdSearch };
+  /** Applies an authoritative match clock or a later correction. */
+  function setClock(value: GameClock): void { clock = value; clockUpdatedAt = now; }
+  return { controller, statuses, moves, attempts, searches, replies, engineReplies, advance, setPosition, holdSearch, setClock };
 }
 
 /** Converts a missing input callback into three fresh searches and a bounded final failure. */
@@ -248,3 +254,95 @@ async function deepAverageMateInput(): Promise<void> {
   } finally { h.controller.dispose(); }
 }
 test("Average Move follows a mate found in deep evaluation", deepAverageMateInput);
+
+/** Deducts a held engine response from the complete increment-aware turn target. */
+async function dynamicTurnIncludesSearch(): Promise<void> {
+  const h = harness({ dynamicDelay: true, autoPlayDelay: 10000 });
+  try {
+    h.setClock({ remainingMs: 180000, initialMs: 180000, incrementMs: 2000, running: true });
+    h.holdSearch(1);
+    await h.advance(0);
+    h.controller.start();
+    await h.advance(2000);
+    assert.equal(h.attempts.length, 0);
+    assert.ok(h.searches[0]!.deadline! > 6000 && h.searches[0]!.deadline! < 6400);
+    h.engineReplies[0]?.();
+    await h.advance(4000);
+    assert.equal(h.attempts.length, 0);
+    assert.match(h.controller.state.status, /^Waiting 0\.\ds\.\.\.$/);
+    await h.advance(400);
+    assert.equal(h.attempts.length, 1);
+  } finally { h.controller.dispose(); }
+}
+test("dynamic timing includes queued analysis rather than adding a full wait afterward", dynamicTurnIncludesSearch);
+
+/** Releases an expired queued search and ignores its later response. */
+async function expiredQueueUsesLegalMove(): Promise<void> {
+  const h = harness();
+  try {
+    h.setClock({ remainingMs: 180000, initialMs: 180000, incrementMs: 2000, running: true });
+    h.holdSearch(1);
+    await h.advance(0);
+    h.controller.start();
+    await h.advance(6500);
+    assert.equal(h.attempts.length, 1);
+    const game = new Chess();
+    assert.ok(game.move({ from: h.moves[0]!.slice(0, 2), to: h.moves[0]!.slice(2, 4) }));
+    h.setPosition(game.fen());
+    await h.advance(500);
+    h.engineReplies[0]?.();
+    await h.advance(1000);
+    assert.equal(h.attempts.length, 1);
+    assert.equal(h.controller.state.status, "Opponent's turn");
+  } finally { h.controller.dispose(); }
+}
+test("an engine queue cannot outlast the dynamic turn budget", expiredQueueUsesLegalMove);
+
+/** Cancels a pending dynamic wait immediately when the live clock is corrected downward. */
+async function lowClockRemovesWait(): Promise<void> {
+  const h = harness();
+  try {
+    h.setClock({ remainingMs: 300000, initialMs: 300000, incrementMs: 3000, running: true });
+    await h.advance(0);
+    h.controller.start();
+    await h.advance(200);
+    assert.match(h.controller.state.status, /^Waiting/);
+    h.setClock({ remainingMs: 2000, initialMs: 300000, incrementMs: 3000, running: true });
+    await h.advance(150);
+    assert.equal(h.attempts.length, 1);
+  } finally { h.controller.dispose(); }
+}
+test("time trouble removes dynamic waiting instead of spending a future increment", lowClockRemovesWait);
+
+/** Prevents delayed input after STOP without relying on another board update. */
+async function stopDuringDynamicWait(): Promise<void> {
+  const h = harness();
+  try {
+    h.setClock({ remainingMs: 180000, initialMs: 180000, incrementMs: 2000, running: true });
+    await h.advance(0);
+    h.controller.start();
+    await h.advance(200);
+    assert.match(h.controller.state.status, /^Waiting/);
+    h.controller.stop();
+    await h.advance(10000);
+    assert.equal(h.attempts.length, 0);
+    assert.equal(h.controller.state.status, "Stopped");
+  } finally { h.controller.dispose(); }
+}
+test("STOP cancels dynamic waiting without later input", stopDuringDynamicWait);
+
+/** Withholds an incomplete unlimited result instead of relaxing depth in analysis-only mode. */
+async function unlimitedDepthRemainsRequired(): Promise<void> {
+  const h = harness({ autoPlay: false, depth: 15 },
+    /** Returns an incomplete search without declaring a clock deadline. */
+    () => [{ depth: 3, score: 0, mate: null, moves: ["e2e4"], nodes: 100 }]);
+  try {
+    await h.advance(0);
+    h.controller.start();
+    await h.advance(200);
+    assert.match(h.controller.state.status, /below the selected depth 15/);
+    assert.equal(h.attempts.length, 0);
+    assert.equal(h.searches[0]?.deadline, undefined);
+  } finally { h.controller.dispose(); }
+}
+test("analysis without automatic clock budgeting still requires its selected depth", unlimitedDepthRemainsRequired);

@@ -4,6 +4,7 @@ import { delay, stopAnalysis } from "./engine-client";
 import { analyzeMove, type MoveChoice, type ReportProgress } from "./move-analysis";
 import type { PlayerPosition } from "./providers/position";
 import type { Settings } from "./shared";
+import type { MoveSelectionBudget } from "./timing/move-selection-budget";
 
 const retryLimit = 3, retryDelay = 1000, inputTimeout = 3000, confirmationTimeout = 700;
 export interface MoveOutcome { accepted: boolean; choice: MoveChoice }
@@ -40,8 +41,8 @@ async function attemptMove(fen: string, move: string, settings: Settings, signal
   }
 }
 
-/** Recomputes the complete move choice between three one-second retries. */
-export async function executeMove(position: PlayerPosition, initial: MoveChoice, settings: Settings, signal: AbortSignal, report: ReportProgress): Promise<MoveOutcome> {
+/** Recomputes retries within the same turn budget without adding another artificial delay. */
+export async function executeMove(position: PlayerPosition, initial: MoveChoice, settings: Settings, signal: AbortSignal, report: ReportProgress, budget?: MoveSelectionBudget): Promise<MoveOutcome> {
   let choice = initial;
   for (let attempt = 0; attempt <= retryLimit; attempt++) {
     signal.throwIfAborted();
@@ -51,9 +52,11 @@ export async function executeMove(position: PlayerPosition, initial: MoveChoice,
       await delay(retryDelay, signal);
       if (!isCurrentPosition(position) || !canPlay(position.fen)) return { accepted: false, choice };
       const retryStatus = `Reanalyzing position (retry ${attempt}/${retryLimit})...`;
-      const candidate = await analyzeMove(position, settings, signal,
+      /** Uses the same selection deadline after a rejected or stalled input. */
+      const select = (scope: AbortSignal) => analyzeMove(position, settings, scope,
         /** Keeps the visible retry number through every stage of move selection. */
-        (progress) => report({ ...progress, status: retryStatus }));
+        (progress) => report({ ...progress, status: retryStatus }), budget);
+      const candidate = budget ? await budget.run(signal, select) : await select(signal);
       if (!candidate || !canPlay(position.fen)) return { accepted: false, choice };
       choice = candidate;
     }

@@ -30,16 +30,19 @@ function Slider({ label, name, max, min = 0, step = 1, scale = 1, suffix = "", s
     (event) => change({ [name]: Number(event.target.value) * scale })} /></div>;
 }
 
-/** Pairs Auto Play with its delay using the shared toggle-and-slider layout. */
+/** Pairs automatic play with dynamic timing and reveals manual delay on a separate row. */
 function AutoPlay({ settings, change }: SettingProps) {
   const seconds = settings.autoPlayDelay / 1000;
-  return <div className="bot-setting-item bot-toggle-slider-row">
+  return <div className="bot-setting-item bot-toggle-slider-row bot-auto-play-row">
     <label className="bot-checkbox-label"><input type="checkbox" checked={settings.autoPlay} onChange={
       /** Toggles automatic play and enables or disables its delay control. */
       (event) => change({ autoPlay: event.target.checked })} /><span>AUTO PLAY</span></label>
-    <label className="bot-inline-slider-label" htmlFor="bot-autoPlayDelay"><span>RANDOM DELAY</span><span>{seconds}s</span><input id="bot-autoPlayDelay" aria-label="RANDOM DELAY" type="range" min="0" max="10" step="0.1" value={seconds} disabled={!settings.autoPlay} onChange={
+    <label className="bot-checkbox-label" title="Distribute match time across a rolling 40-move forecast, including the increment."><input type="checkbox" checked={settings.dynamicDelay} onChange={
+      /** Persists automatic clock allocation without discarding the manual delay preference. */
+      (event) => change({ dynamicDelay: event.target.checked })} /><span>DYNAMIC DELAY</span></label>
+    {!settings.dynamicDelay && <label className="bot-inline-slider-label bot-random-delay" htmlFor="bot-autoPlayDelay"><span>RANDOM DELAY</span><span>{seconds}s</span><input id="bot-autoPlayDelay" aria-label="RANDOM DELAY" type="range" min="0" max="10" step="0.1" value={seconds} disabled={!settings.autoPlay} onChange={
       /** Stores the displayed delay in milliseconds for the move executor. */
-      (event) => change({ autoPlayDelay: Number(event.target.value) * 1000 })} /></label>
+      (event) => change({ autoPlayDelay: Number(event.target.value) * 1000 })} /></label>}
   </div>;
 }
 

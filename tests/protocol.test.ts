@@ -10,6 +10,10 @@ function settingsValidation(): void {
   assert.equal(DEFAULT_SETTINGS.depth, 7);
   assert.equal(DEFAULT_SETTINGS.autoPlayDelay, 2500);
   assert.equal(DEFAULT_SETTINGS.autoPlay, true);
+  assert.equal(DEFAULT_SETTINGS.dynamicDelay, true);
+  assert.equal(normalizeSettings({ autoPlayDelay: 3400 }).dynamicDelay, true);
+  assert.equal(normalizeSettings({ dynamicDelay: false }).dynamicDelay, false);
+  assert.equal(normalizeSettings({ dynamicDelay: "false" }).dynamicDelay, true);
   assert.equal(DEFAULT_SETTINGS.autoNewMatch, true);
   assert.equal(DEFAULT_SETTINGS.mistakeProbability, 25);
   assert.equal(DEFAULT_SETTINGS.mistakeKeep, 2);

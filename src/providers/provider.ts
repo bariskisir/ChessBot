@@ -1,6 +1,7 @@
 /** Describes the board and game controls supplied by one chess website. */
 import type { MistakeType } from "../mistake-mode";
 import type { Settings } from "../shared";
+import type { GameClock } from "./clock";
 
 export type GameAction = { button: HTMLElement } & (
   { kind: "round"; name: "New Game" | "Rematch"; resumeOnNavigation?: true } |
@@ -14,6 +15,7 @@ export interface Provider {
   getBoard(): HTMLElement | null;
   readPosition(): string | null;
   userColor(): "w" | "b";
+  readClock(): GameClock | null;
   canPlay(fen: string): boolean;
   boardBusy(): boolean;
   clearHighlights(): void;

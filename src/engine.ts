@@ -65,7 +65,8 @@ function onEngineMessage(event: MessageEvent<string>): void {
     const { depth } = active.request.settings;
     phase = "searching";
     refreshSearchTimeout();
-    worker!.postMessage(`go depth ${depth}`);
+    const remainingMs = active.request.deadline === undefined ? null : Math.max(1, active.request.deadline - Date.now());
+    worker!.postMessage(`go depth ${depth}${remainingMs === null ? "" : ` movetime ${Math.floor(remainingMs)}`}`);
   } else if (line.startsWith("info ") && phase === "searching" && active) {
     noteSearchProgress(line);
     const parsed = parseInfo(line, active.request.fen);
@@ -73,7 +74,7 @@ function onEngineMessage(event: MessageEvent<string>): void {
   } else if (line.startsWith("bestmove ")) {
     if (phase === "stopping") { finish({ error: "Analysis canceled." }); return; }
     if (phase !== "searching" || !active) return;
-    finish({ result: { fen: active.request.fen, bestMove: line.split(" ")[1] ?? "(none)", variations: variations.filter(Boolean) } });
+    finish({ result: { fen: active.request.fen, bestMove: line.split(" ")[1] ?? "(none)", variations: variations.filter(Boolean), ...(active.request.deadline !== undefined ? { timeLimited: true } : {}) } });
   }
 }
 
@@ -129,7 +130,9 @@ function onRequest(request: EngineRequest, _sender: chrome.runtime.MessageSender
   if (request.action === "stop") { respond({ stopped: true }); return; }
   if (request.action !== "analyze" || typeof request.fen !== "string" || request.fen.length > 200 || /[\r\n]/.test(request.fen)) { respond({ error: "Invalid engine request." }); return; }
   if (queue.length >= 12) { respond({ error: "Engine busy. Try again shortly." }); return; }
-  queue.push({ request: { ...request, settings: normalizeSettings(request.settings) }, respond });
+  const { deadline, ...payload } = request;
+  const boundedDeadline = typeof deadline === "number" && Number.isFinite(deadline) ? { deadline } : {};
+  queue.push({ request: { ...payload, settings: normalizeSettings(request.settings), ...boundedDeadline }, respond });
   pump();
   return true;
 }

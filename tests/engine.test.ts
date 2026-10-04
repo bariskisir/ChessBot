@@ -41,9 +41,9 @@ function harness() {
     } } },
   });
   /** Sends one request and retains asynchronous responses for exact-count assertions. */
-  function request(owner: string, action: "analyze" | "stop" = "analyze", lines = 10) {
+  function request(owner: string, action: "analyze" | "stop" = "analyze", lines = 10, deadline?: number) {
     const replies: EngineResponse[] = [];
-    listener({ target: "engine", owner, action, fen, settings: { ...DEFAULT_SETTINGS, lines } }, {},
+    listener({ target: "engine", owner, action, fen, settings: { ...DEFAULT_SETTINGS, lines }, ...(deadline === undefined ? {} : { deadline }) }, {},
       /** Collects responses without hiding duplicate completions. */
       (response) => replies.push(response));
     return replies;
@@ -154,3 +154,36 @@ function stuckWorker(): void {
   assert.equal(next.length, 1);
 }
 test("stuck cancellation replaces the worker and ignores stale callbacks", stuckWorker);
+
+/** Includes startup time in the UCI limit and releases the warm worker after a partial search. */
+function boundedSearch(): void {
+  const h = harness();
+  const replies = h.request("a", "analyze", 1, Date.now() + 5000);
+  const worker = h.boot();
+  const command = worker.commands.at(-1)!;
+  assert.match(command, /^go depth 7 movetime \d+$/);
+  const duration = Number(command.split(" ").at(-1));
+  assert.ok(duration > 0 && duration <= 5000);
+  worker.emit("info depth 3 multipv 1 score cp 10 nodes 100 pv e2e4");
+  worker.emit("bestmove e2e4");
+  assert.ok(replies[0] && "result" in replies[0]);
+  assert.equal(replies[0].result.timeLimited, true);
+  assert.equal(replies[0].result.variations[0]?.depth, 3);
+  const next = h.request("b", "analyze", 1);
+  worker.emit("readyok");
+  assert.equal(worker.commands.at(-1), "go depth 7");
+  worker.emit("bestmove d2d4");
+  assert.equal(next.length, 1);
+  assert.equal(h.workers.length, 1);
+}
+test("deadline searches return partial analysis and make the worker available again", boundedSearch);
+
+/** Prevents non-finite message data from becoming a malformed UCI search command. */
+function invalidDeadline(): void {
+  const h = harness();
+  h.request("a", "analyze", 1, NaN);
+  const worker = h.boot();
+  assert.equal(worker.commands.at(-1), "go depth 7");
+  worker.emit("bestmove e2e4");
+}
+test("invalid deadlines cannot reach the engine protocol", invalidDeadline);

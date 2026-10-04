@@ -223,6 +223,58 @@ async function verifyMistakes(page: Page): Promise<void> {
   await page.getByLabel("AVERAGE MOVE", { exact: true }).check();
 }
 
+/** Exercises visible match clocks, a complete dynamic turn, interruption, and time trouble. */
+async function verifyDynamicTiming(page: Page): Promise<void> {
+  await page.getByLabel("AUTO PLAY", { exact: true }).check();
+  await setRange(page, "RANDOM DELAY", "10");
+  await page.getByLabel("DYNAMIC DELAY", { exact: true }).check();
+  await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveCount(0);
+  await page.getByLabel("AVERAGE MOVE", { exact: true }).uncheck();
+  await setRange(page, "DEPTH", "1");
+  await page.evaluate(
+    /** Creates an increment game using the site's normal clock and control markup. */
+    () => {
+      window.chessbotFixture.setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      window.chessbotFixture.setClock(180000, 2000);
+      window.chessbotFixture.resetCounters();
+    });
+  const clock = await page.evaluate(
+    /** Reads the production adapter rather than relying on fixture timing helpers. */
+    () => window.ChessbotBoardTest.readClock());
+  assert.ok(clock && clock.initialMs === 180000 && clock.incrementMs === 2000 && clock.running);
+  await page.getByRole("button", { name: "START", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText(/^Waiting \d+\.\ds\.\.\.$/, { timeout: 5000 });
+  await page.getByRole("button", { name: "STOP", exact: true }).click();
+  await page.waitForTimeout(200);
+  await count(page, "moves", 0);
+  const startedAt = Date.now();
+  await page.getByRole("button", { name: "START", exact: true }).click();
+  await count(page, "moves", 1);
+  assert.ok(Date.now() - startedAt >= 4500 && Date.now() - startedAt < 9500);
+  await page.getByRole("button", { name: "STOP", exact: true }).click();
+  await page.evaluate(
+    /** Replaces the full clock with a low authoritative value while retaining its increment. */
+    () => {
+      window.chessbotFixture.setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      window.chessbotFixture.setClock(180000, 2000, 2000);
+      window.chessbotFixture.resetCounters();
+    });
+  await setRange(page, "DEPTH", "30");
+  const urgentAt = Date.now();
+  await page.getByRole("button", { name: "START", exact: true }).click();
+  await count(page, "moves", 1);
+  assert.ok(Date.now() - urgentAt < 1500);
+  await page.getByRole("button", { name: "STOP", exact: true }).click();
+  await page.evaluate(
+    /** Restores the untimed fixture before independent promotion and follow-up checks. */
+    () => { window.chessbotFixture.setClock(null); window.chessbotFixture.resetCounters(); });
+  await page.getByLabel("DYNAMIC DELAY", { exact: true }).uncheck();
+  await setRange(page, "RANDOM DELAY", "0");
+  await page.getByLabel("AUTO PLAY", { exact: true }).uncheck();
+  await page.getByLabel("AVERAGE MOVE", { exact: true }).check();
+  await setRange(page, "DEPTH", "6");
+}
+
 const fixture = await build({ entryPoints: ["tests/board-fixture.ts"], bundle: true, write: false, format: "iife", target: "chrome120", loader: { ".css": "text" } });
 const fixtureScript = fixture.outputFiles[0]!.text;
 const profile = await mkdtemp(resolve(tmpdir(), "chessbot-parity-"));
@@ -254,11 +306,18 @@ try {
   await page.getByRole("button", { name: "Toggle Settings" }).click();
   await expect(page.locator("#bot-engine-select")).toHaveCount(0);
   await expect(page.locator("#bot-fen-text")).toHaveCount(0);
-  for (const name of ["AUTO PLAY", "AUTO NEW MATCH", "AUTO REMATCH", "AVERAGE MOVE", "ANIMATE MOVES"]) await expect(page.getByLabel(name, { exact: true })).toBeVisible();
+  for (const name of ["AUTO PLAY", "DYNAMIC DELAY", "AUTO NEW MATCH", "AUTO REMATCH", "AVERAGE MOVE", "ANIMATE MOVES"]) await expect(page.getByLabel(name, { exact: true })).toBeVisible();
   await expect(page.getByLabel("ANIMATE MOVES", { exact: true })).not.toBeChecked();
+  await expect(page.getByLabel("DYNAMIC DELAY", { exact: true })).toBeChecked();
+  await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveCount(0);
+  await page.getByLabel("DYNAMIC DELAY", { exact: true }).uncheck();
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveAttribute("max", "10");
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveAttribute("step", "0.1");
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toBeDisabled();
+  const autoPlay = await page.getByLabel("AUTO PLAY", { exact: true }).boundingBox();
+  const dynamicDelay = await page.getByLabel("DYNAMIC DELAY", { exact: true }).boundingBox();
+  const randomDelay = await page.getByLabel("RANDOM DELAY", { exact: true }).boundingBox();
+  assert.ok(autoPlay && dynamicDelay && randomDelay && Math.abs(autoPlay.y - dynamicDelay.y) < 1 && randomDelay.y > autoPlay.y + autoPlay.height);
   await expect(page.getByLabel("MISTAKE", { exact: true })).toHaveAttribute("max", "100");
   await expect(page.getByLabel("KEEP EVAL", { exact: true })).toHaveValue("2");
   await expect(page.getByLabel("KEEP EVAL", { exact: true })).toBeDisabled();
@@ -297,6 +356,7 @@ try {
   await expect(page.locator("#best-move-text")).toHaveText("---");
   await verifyMistakes(page);
   await verifyPromotions(page);
+  await verifyDynamicTiming(page);
   await page.evaluate(
     /** Restores the initial board for the independent automation checks. */
     () => window.chessbotFixture.setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
@@ -355,6 +415,7 @@ try {
   await setRange(page, "MISTAKE", "70");
   await setRange(page, "KEEP EVAL", "3.5");
   await setRange(page, "RANDOM DELAY", "3.4");
+  await page.getByLabel("DYNAMIC DELAY", { exact: true }).check();
   const header = await page.locator(".bot-panel-header").boundingBox();
   assert.ok(header);
   await page.mouse.move(header.x + 40, header.y + 8);
@@ -367,6 +428,9 @@ try {
   await page.getByRole("button", { name: "Toggle Settings" }).click();
   await expect(page.getByLabel("MISTAKE", { exact: true })).toHaveValue("70");
   await expect(page.getByLabel("KEEP EVAL", { exact: true })).toHaveValue("3.5");
+  await expect(page.getByLabel("DYNAMIC DELAY", { exact: true })).toBeChecked();
+  await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveCount(0);
+  await page.getByLabel("DYNAMIC DELAY", { exact: true }).uncheck();
   await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveValue("3.4");
   await expect(page.getByLabel("AUTO NEW MATCH", { exact: true })).toBeChecked();
   await expect(page.getByLabel("AUTO REMATCH", { exact: true })).toBeChecked();
@@ -387,7 +451,13 @@ try {
   await page.setViewportSize({ width: 390, height: 760 });
   const compact = await page.locator("#bot-overlay-panel").boundingBox();
   assert.ok(compact && compact.x >= 0 && compact.x + compact.width <= 390);
+  const timingFits = await page.locator(".bot-auto-play-row").evaluate(
+    /** Checks the two toggles and manual second row at the shipped narrow viewport. */
+    (row) => row.scrollWidth <= row.clientWidth + 1);
+  assert.equal(timingFits, true);
+  await page.getByLabel("DYNAMIC DELAY", { exact: true }).check();
+  await expect(page.getByLabel("RANDOM DELAY", { exact: true })).toHaveCount(0);
   await verifyLichess(context, errors);
   assert.deepEqual(errors, []);
-  console.log("Passed: Chess.com panel, engine, automation, promotions, persistence, offline and tab isolation; Lichess rounds, follow-up navigation, and puzzle analysis with trusted auto play.");
+  console.log("Passed: Chess.com panel, dynamic timing, engine, automation, promotions, persistence, offline and tab isolation; Lichess clocks, rounds, follow-up navigation, and puzzle analysis with trusted auto play.");
 } finally { await context.close(); }

@@ -2,6 +2,7 @@
 import * as board from "./lichess-board";
 import * as input from "./lichess-input";
 import { findGameAction } from "./lichess-automation";
+import { readClock } from "./lichess-clock";
 import type { Provider } from "./provider";
 
 export const lichess: Provider = {
@@ -10,5 +11,6 @@ export const lichess: Provider = {
   resumeAfterNavigation: true,
   ...board,
   ...input,
+  readClock,
   findGameAction,
 };

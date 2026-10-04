@@ -2,15 +2,16 @@
 export interface PanelPosition { top: string; left?: string; right?: string }
 export interface Settings {
   depth: number; lines: number; autoPlay: boolean;
-  autoPlayDelay: number; autoNewMatch: boolean; autoRematch: boolean;
+  autoPlayDelay: number; dynamicDelay: boolean; autoNewMatch: boolean; autoRematch: boolean;
   averageMove: boolean; animateMoves: boolean; mistakeProbability: number; mistakeKeep: number; panelPos: PanelPosition;
 }
 export interface Variation { depth: number; score: number; mate: number | null; moves: string[]; nodes: number }
-export interface Analysis { fen: string; bestMove: string; variations: Variation[] }
-export interface EngineRequest { target: "background" | "engine"; action: "analyze" | "stop"; owner: string; fen: string; settings: Settings }
+export interface Analysis { fen: string; bestMove: string; variations: Variation[]; timeLimited?: boolean }
+export interface EngineRequest { target: "background" | "engine"; action: "analyze" | "stop"; owner: string; fen: string; settings: Settings; deadline?: number }
+export type SearchDeadline = () => number | null;
 export type EngineResponse = { result: Analysis } | { error: string };
 export const DEFAULT_SETTINGS: Settings = {
-  depth: 7, lines: 10, autoPlay: true, autoPlayDelay: 2500,
+  depth: 7, lines: 10, autoPlay: true, autoPlayDelay: 2500, dynamicDelay: true,
   autoNewMatch: true, autoRematch: false, averageMove: true, animateMoves: false, mistakeProbability: 25,
   mistakeKeep: 2, panelPos: { top: "10px", right: "10px" },
 };
@@ -30,6 +31,7 @@ export function normalizeSettings(value: unknown): Settings {
   return {
     depth: bounded(data.depth, 7, 1, 30), lines: bounded(data.lines, 10, 1, 10),
     autoPlay: typeof data.autoPlay === "boolean" ? data.autoPlay : true,
+    dynamicDelay: typeof data.dynamicDelay === "boolean" ? data.dynamicDelay : true,
     autoPlayDelay: bounded(data.autoPlayDelay, 2500, 0, 10000), autoNewMatch: data.autoNewMatch !== false,
     autoRematch: data.autoRematch === true,
     averageMove: typeof data.averageMove === "boolean" ? data.averageMove : true,

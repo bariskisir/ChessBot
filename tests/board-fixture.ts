@@ -33,7 +33,28 @@ function updateClocks(): void {
       container.append(marker);
     }
     marker.classList.toggle("active", active);
+    container.querySelector(".clock-component")?.classList.toggle("clock-player-turn", active);
   }
+}
+
+/** Exposes real clock markup while leaving untimed fixture runs unchanged. */
+function setClock(initialMs: number | null, incrementMs = 0, remainingMs = initialMs ?? 0): void {
+  for (const element of document.querySelectorAll(".time-control-component, .clock-component")) element.remove();
+  if (initialMs === null) return;
+  updateClocks();
+  const control = document.createElement("div");
+  control.className = "time-control-component";
+  control.textContent = `${initialMs / 60000}+${incrementMs / 1000}`;
+  document.body.append(control);
+  for (const id of ["board-layout-player-bottom", "board-layout-player-top"]) {
+    const clock = document.createElement("div"), time = document.createElement("span");
+    clock.className = "clock-component";
+    time.className = "clock-time";
+    time.textContent = `${Math.floor(remainingMs / 60000)}:${((remainingMs % 60000) / 1000).toFixed(1).padStart(4, "0")}`;
+    clock.append(time);
+    document.getElementById(id)!.append(clock);
+  }
+  updateClocks();
 }
 
 /** Renders board cells and piece classes understood by the extension. */
@@ -190,7 +211,7 @@ function finishGame(): void { for (const element of document.querySelectorAll(".
 /** Clears action counters between independent automation checks. */
 function resetCounters(): void { counters.moves = 0; counters.rematches = 0; counters.newMatches = 0; }
 
-declare global { interface Window { chessbotFixture: { setFen: typeof setFen; fen: typeof currentFen; gameOver: typeof gameOver; counters: typeof counters; resetCounters: typeof resetCounters; openPromotion: typeof openPromotion; configurePromotion: typeof configurePromotion } } }
+declare global { interface Window { chessbotFixture: { setFen: typeof setFen; fen: typeof currentFen; gameOver: typeof gameOver; counters: typeof counters; resetCounters: typeof resetCounters; openPromotion: typeof openPromotion; configurePromotion: typeof configurePromotion; setClock: typeof setClock } } }
 
 /** Injects the fixture presentation so the mock declares no styles. */
 function injectStyles(): void {
@@ -201,7 +222,7 @@ function injectStyles(): void {
   document.head.append(style);
 }
 
-window.chessbotFixture = { setFen, fen: currentFen, gameOver, counters, resetCounters, openPromotion, configurePromotion };
+window.chessbotFixture = { setFen, fen: currentFen, gameOver, counters, resetCounters, openPromotion, configurePromotion, setClock };
 board.addEventListener("pointerdown", press);
 board.addEventListener("click", click);
 new MutationObserver(

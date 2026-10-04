@@ -1,16 +1,28 @@
 /** Provides a single local Stockfish transport for analysis and mistake searches. */
-import type { Analysis, EngineResponse, Settings } from "./shared";
+import type { Analysis, EngineResponse, SearchDeadline, Settings } from "./shared";
 let stopping: Promise<void> = Promise.resolve();
 
-/** Waits for preceding STOP acknowledgements so they cannot cancel a newer search. */
-export async function analyzePosition(fen: string, settings: Settings, signal: AbortSignal): Promise<Analysis> {
+/** Orders cancellation before a bounded search and releases canceled queued requests immediately. */
+export async function analyzePosition(fen: string, settings: Settings, signal: AbortSignal, getDeadline?: SearchDeadline): Promise<Analysis> {
   await stopping;
   signal.throwIfAborted();
-  const response: EngineResponse = await chrome.runtime.sendMessage({ target: "background", action: "analyze", fen, settings });
-  signal.throwIfAborted();
-  if (!response || "error" in response) throw new Error(response?.error ?? "No response from Stockfish.");
-  if (response.result.fen !== fen) throw new Error("The analyzed position changed.");
-  return response.result;
+  let rejectCancellation!: (reason: unknown) => void;
+  const cancelled = new Promise<never>(
+    /** Keeps a lost engine reply from withholding an expired turn. */
+    (_resolve, reject) => { rejectCancellation = reject; });
+  /** Releases this owner's engine work without waiting for its background response. */
+  const abort = (): void => { void stopAnalysis(); rejectCancellation(signal.reason); };
+  signal.addEventListener("abort", abort, { once: true });
+  try {
+    const deadline = getDeadline?.();
+    const response: EngineResponse = await Promise.race([
+      chrome.runtime.sendMessage({ target: "background", action: "analyze", fen, settings, ...(deadline != null ? { deadline } : {}) }), cancelled,
+    ]);
+    signal.throwIfAborted();
+    if (!response || "error" in response) throw new Error(response?.error ?? "No response from Stockfish.");
+    if (response.result.fen !== fen) throw new Error("The analyzed position changed.");
+    return response.result;
+  } finally { signal.removeEventListener("abort", abort); }
 }
 
 /** Orders document cancellations before subsequent requests without waiting for engine draining. */

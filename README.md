@@ -19,7 +19,7 @@ The primary goal of this extension is **education through observation**.
 
 *   **Local Stockfish 19**: Runs entirely in your browser via WASM. There is no remote engine or API configuration, and all calculations stay on your device.
 *   **Real-time Evaluation Bar**: A dynamic, responsive eval bar that shows the advantage from the current player's perspective.
-*   **Auto Play Mode**: Automatically execute engine moves with a customizable random delay to simulate match flows.
+*   **Auto Play Mode**: Automatically execute engine moves with dynamic clock allocation, or a customizable random delay.
 *   **Auto New Match & Auto Rematch**: Detect game over and start the next game automatically, with 2.5-second delays. On Lichess, an automated follow-up keeps the bot running after navigation to the new round.
 *   **Mistake Mode**: With the configured probability, play the weakest engine alternative that still keeps your advantage above **KEEP EVAL**. Keep defaults to 2 pawns and is adjustable from 0 to 5 in 0.5 steps beside Mistake. At 0% mistakes are disabled. If no alternative stays above the floor, or you are already below it, keep the normal selection.
 *   **Smooth UI**: A modern, draggable overlay panel that stays out of your way and remembers its position.
@@ -53,7 +53,9 @@ Install and build hooks copy the pinned `stockfish@19.0.0` single-threaded Lite 
 2.  The **ChessBot** panel will appear on the screen.
 3.  Click **START** to begin board detection and analysis.
 4.  Toggle **AUTO PLAY** if you want the bot to make moves automatically (ideal for engine-vs-bot matches).
-5.  Use the **Advanced Settings** (arrow icon) to adjust Auto New Match, Auto Rematch, average move selection, random delay, mistake probability, engine variations (MultiPV), and depth.
+5.  Use the **Advanced Settings** (arrow icon) to adjust Dynamic Delay, Auto New Match, Auto Rematch, average move selection, mistake probability, engine variations (MultiPV), and depth.
+
+**DYNAMIC DELAY** defaults on beside **AUTO PLAY**. It distributes the remaining match time over an initial 40-move forecast, includes future increments, and extends the forecast as long games develop. Board settling, queued analysis, deep evaluation, and alternative searches share the same turn budget. Time trouble removes intentional waiting and bounds analysis to preserve time for input. Untimed games and training add no dynamic wait. Turn Dynamic Delay off to reveal **RANDOM DELAY** on the next row; its saved maximum remains available and elapsed analysis is deducted from the random target. When a site's time control is unavailable, allocation uses its visible remaining clock conservatively without assuming an increment.
 
 Lichess Auto Play uses Chrome's `debugger` permission because Chessground ignores synthetic mouse events. Chrome will show a debugging notice while each move is sent. Training puzzles require a visible move history so the current position can be reconstructed. When Lichess rounds hide their move list, position reading follows legal moves from an observed starting board. Unsupported variants and a midgame reload without visible history remain unanalyzed.
 

@@ -157,3 +157,9 @@
 .bot-mistake-row {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
 }
+
+.bot-auto-play-row {
+  grid-template-columns: minmax(0, 1fr) max-content;
+
+  .bot-random-delay { grid-column: 1 / -1; }
+}

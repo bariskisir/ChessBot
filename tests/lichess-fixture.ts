@@ -22,6 +22,7 @@ function squareAt(x: number, y: number): string {
 
 /** Renders the piece transforms and SAN tags present in a round page. */
 function render(): void {
+  for (const color of ["w", "b"] as const) shell.querySelector(`.rclock-${color === "w" ? "white" : "black"}`)?.classList.toggle("running", game.turn() === color);
   board.replaceChildren();
   const black = wrap.classList.contains("orientation-black");
   for (const row of game.board()) for (const piece of row) if (piece) {
@@ -41,6 +42,27 @@ function render(): void {
     const move = document.createElement("z7yx"); move.textContent = san;
     if (index === history.length - 1) move.className = "a1t";
     list.append(move);
+  }
+}
+
+/** Adds color-owned round clocks and visible increment metadata for timing checks. */
+function setClock(initialMs: number | null, incrementMs = 0, whiteMs = initialMs ?? 0, blackMs = initialMs ?? 0): void {
+  for (const element of shell.querySelectorAll(".rclock, .setup")) element.remove();
+  if (initialMs === null) return;
+  const setup = document.createElement("div"), control = document.createElement("span");
+  setup.className = "setup";
+  control.className = "clock";
+  control.textContent = `${initialMs / 60000}+${incrementMs / 1000}`;
+  setup.append(control);
+  shell.querySelector(".game__meta")!.append(setup);
+  for (const [name, remainingMs] of [["white", whiteMs], ["black", blackMs]] as const) {
+    const clock = document.createElement("div"), time = document.createElement("div");
+    clock.className = `rclock rclock-${name}`;
+    clock.classList.toggle("running", game.turn() === (name === "white" ? "w" : "b"));
+    time.className = "time";
+    time.textContent = `${Math.floor(remainingMs / 60000)}:${((remainingMs % 60000) / 1000).toFixed(1).padStart(4, "0")}`;
+    clock.append(time);
+    shell.querySelector(".round__app")!.append(clock);
   }
 }
 
@@ -79,8 +101,8 @@ function gameOver(): void {
     () => { counts.newMatches++; location.href = "/?hook_like=uEYiEOQf"; });
 }
 
-declare global { interface Window { lichessFixture: { setMoves: typeof setMoves; fen: () => string; counts: typeof counts; gameOver: typeof gameOver } } }
-window.lichessFixture = { setMoves, fen:
+declare global { interface Window { lichessFixture: { setMoves: typeof setMoves; fen: () => string; counts: typeof counts; gameOver: typeof gameOver; setClock: typeof setClock } } }
+window.lichessFixture = { setMoves, setClock, fen:
   /** Returns the fixture's current legal position. */
   () => game.fen(), counts, gameOver };
 board.addEventListener("mousedown",

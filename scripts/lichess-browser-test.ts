@@ -41,6 +41,38 @@ export async function verifyLichess(context: BrowserContext, errors: string[]): 
   await expect(lichessPage.getByRole("status")).toHaveText("Analyzing Board", { timeout: 25000 });
   await expect(lichessPage.locator("cg-board > square.bot-highlight")).toHaveCount(2);
   await lichessPage.getByRole("button", { name: "STOP", exact: true }).click();
+  const clockHarness = await build({ entryPoints: ["src/board.ts"], bundle: true, write: false, format: "iife", globalName: "ChessbotBoardTest", target: "chrome120" });
+  await lichessPage.addScriptTag({ content: clockHarness.outputFiles[0]!.text });
+  const clock = await lichessPage.evaluate(
+    /** Reads the owned Black clock after manually flipping its board to White. */
+    () => {
+      window.lichessFixture.setMoves(["e4"], "w");
+      window.lichessFixture.setClock(180000, 2000, 180000, 150000);
+      return window.ChessbotBoardTest.readClock();
+    });
+  expect(clock?.incrementMs).toBe(2000);
+  expect(clock?.initialMs).toBe(180000);
+  expect(clock?.remainingMs).toBeGreaterThan(149000);
+  expect(clock?.remainingMs).toBeLessThanOrEqual(150000);
+  expect(clock?.running).toBe(true);
+  const bootstrap = await lichessPage.evaluate(
+    /** Verifies numeric round metadata when the visible control is absent. */
+    () => {
+      document.querySelector(".game__meta .setup")!.remove();
+      const script = document.createElement("script");
+      script.type = "application/json";
+      script.textContent = JSON.stringify({ game: { id: "uEYiEOQf" }, clock: { initial: 300, increment: 3 } });
+      document.body.append(script);
+      const known = window.ChessbotBoardTest.readClock();
+      script.remove();
+      return { known, unknown: window.ChessbotBoardTest.readClock() };
+    });
+  expect(bootstrap.known?.initialMs).toBe(300000);
+  expect(bootstrap.known?.incrementMs).toBe(3000);
+  expect(bootstrap.unknown?.incrementMs).toBe(0);
+  await lichessPage.evaluate(
+    /** Removes the timed fixture after verifying ownership and restores its drawing direction. */
+    () => { window.lichessFixture.setClock(null); window.lichessFixture.setMoves(["e4"], "b"); });
   await lichessPage.evaluate(
     /** Reproduces the user's zero-move Lichess page, which has no app element. */
     () => { history.replaceState(null, "", "/I6QeHeX0"); window.lichessFixture.setMoves([], "w", false); });

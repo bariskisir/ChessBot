@@ -1,7 +1,7 @@
 /** Preserves forced mates before picking average-quality moves from the engine's MultiPV list. */
 import { Chess } from "chess.js";
 import { evaluatePosition, playerScore } from "./mistake-mode";
-import type { Settings, Variation } from "./shared";
+import type { SearchDeadline, Settings, Variation } from "./shared";
 
 /** Keeps the shortest winning mate, with engine order breaking equal-length ties. */
 export function chooseMatingMove(variations: Variation[], color: "w" | "b"): string | null {
@@ -44,8 +44,8 @@ export function chooseAverageMove(variations: Variation[], color: "w" | "b"): st
   return rankAverageMoves(variations, color)[0] ?? null;
 }
 
-/** Follows a winning mate or verifies that an average-ranked move stays at or above zero. */
-export async function chooseVerifiedAverageMove(fen: string, variations: Variation[], color: "w" | "b", settings: Settings, signal: AbortSignal): Promise<string | null> {
+/** Verifies average-ranked moves without extending the current turn's search deadline. */
+export async function chooseVerifiedAverageMove(fen: string, variations: Variation[], color: "w" | "b", settings: Settings, signal: AbortSignal, getDeadline?: SearchDeadline): Promise<string | null> {
   signal.throwIfAborted();
   const matingMove = chooseMatingMove(variations, color);
   if (matingMove) return matingMove;
@@ -54,7 +54,7 @@ export async function chooseVerifiedAverageMove(fen: string, variations: Variati
     const chess = new Chess(fen);
     try { chess.move({ from: candidate.slice(0, 2), to: candidate.slice(2, 4), promotion: candidate[4] ?? "q" }); } catch { continue; }
     if (chess.isCheckmate()) return candidate;
-    const verified = await evaluatePosition(chess.fen(), settings, signal);
+    const verified = await evaluatePosition(chess.fen(), settings, signal, getDeadline);
     if (!verified && !chess.isDraw()) continue;
     if (playerScore(verified, color) >= 0) return candidate;
   }

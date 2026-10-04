@@ -1,6 +1,6 @@
 /** Coordinates panel behavior with cancelable local analysis and automation. */
 import { Chess } from "chess.js";
-import { boardBusy, canPlay, canResumePromotion, clearHighlights, getBoard, highlight, isCurrentPosition, readPosition, resumePromotion, samePosition, userColor } from "./board";
+import { boardBusy, canPlay, canResumePromotion, clearHighlights, getBoard, highlight, isCurrentPosition, readClock, readPosition, resumePromotion, samePosition, userColor } from "./board";
 import { findGameAction, type GameAction } from "./automation";
 import { delay, stopAnalysis } from "./engine-client";
 import { analyzeMove } from "./move-analysis";
@@ -10,6 +10,8 @@ import { DEFAULT_SETTINGS, normalizeSettings, type Settings, type Variation, typ
 import { loadSettings, saveSettings } from "./storage";
 import { currentProvider } from "./providers";
 import { armFollowup, clearFollowup, takeFollowup } from "./followup-session";
+import { TurnTiming } from "./timing/turn-timing";
+import { MoveSelectionBudget } from "./timing/move-selection-budget";
 
 export interface PanelState {
   settings: Settings; loaded: boolean; running: boolean; fen: string;
@@ -31,6 +33,7 @@ export class Controller {
   private observer: MutationObserver;
   private frame = 0;
   private candidatePosition = "";
+  private observedTurn: { key: string; startedAt: number } | null = null;
 
   /** Observes visible board changes immediately, with periodic tracking as a fallback. */
   constructor(private readonly render: (state: PanelState) => void) {
@@ -95,6 +98,7 @@ export class Controller {
     clearFollowup();
     this.cancel();
     this.promotionFailed = false;
+    this.observedTurn = null;
     this.lastPosition = "";
     this.patch({ running: true, status: "Starting...", color: "#10b981" });
     this.poll();
@@ -130,6 +134,10 @@ export class Controller {
     if (fen !== this.state.fen || player !== this.state.player) this.patch({ fen, player });
     if (fen && !this.state.running && currentProvider()?.resumeAfterNavigation && takeFollowup()) { this.start(); return; }
     if (!this.state.running || this.pendingAction?.kind === "game") return;
+    if (fen && !boardBusy()) {
+      const key = `${fen}:${player}`;
+      if (this.observedTurn?.key !== key) this.observedTurn = { key, startedAt: Date.now() };
+    }
     if (this.pendingAction) {
       const position = this.pendingAction.kind === "move" ? this.pendingAction.position : null;
       if (position && fen && !boardBusy() && (!samePosition(fen, position.fen) || player !== position.player)) {
@@ -223,22 +231,35 @@ export class Controller {
         return;
       }
       const position = { fen, player };
-      const choice = await analyzeMove(position, settings, signal,
+      const timing = new TurnTiming(settings,
+        /** Reads corrected live clocks without losing the time spent settling this position. */
+        () => {
+          const clock = readClock();
+          if (!clock) return null;
+          const weights = { p: 0, n: 1, b: 1, r: 2, q: 4, k: 0 };
+          let material = 0;
+          for (const row of chess.board()) for (const piece of row) if (piece) material += weights[piece.type];
+          return { ...clock, completedMoves: Math.max(0, Number(fen.split(" ")[5]) - 1), materialPhase: Math.min(1, material / 24), quietHalfMoves: Number(fen.split(" ")[4]), lagMs: 250 };
+        }, this.observedTurn?.startedAt ?? Date.now());
+      const budget = settings.autoPlay && canPlay(fen) ? new MoveSelectionBudget(fen, timing.remainingAnalysisMs) : undefined;
+      /** Keeps the complete main, evaluation, and alternative searches inside one turn budget. */
+      const select = (scope: AbortSignal) => analyzeMove(position, settings, scope,
         /** Publishes analysis progress only while this operation still owns the panel. */
-        (progress) => { if (!signal.aborted) this.patch(progress); });
+        (progress) => { if (!scope.aborted) this.patch(progress); }, budget);
+      const choice = budget ? await budget.run(signal, select) : await select(signal);
       if (!choice) return;
       const { move, mistake, evaluation } = choice;
       if (evaluation) this.patch({ evaluation });
       this.patch({ move: move.toUpperCase(), status: mistake ? "Mistake Mode!" : "Analyzing Board", color: mistake ? "#ef4444" : "#10b981" });
       if (!settings.autoPlay || !canPlay(fen)) { highlight(move, mistake ? "mistake" : undefined); return; }
-      const moveDelay = Math.floor(Math.random() * (settings.autoPlayDelay + 1));
-      this.patch({ status: moveDelay ? `Waiting ${Math.ceil(moveDelay / 100) / 10}s...` : "Playing move...", color: "#3b82f6" });
-      if (moveDelay > 0) await delay(moveDelay, signal);
+      await timing.wait(signal,
+        /** Shows only the remaining share after settling, queued work, and analysis. */
+        (remainingMs) => this.patch({ status: `Waiting ${(remainingMs / 1000).toFixed(1)}s...`, color: "#3b82f6" }));
       if (!isCurrentPosition(position)) return;
       this.pendingAction = { kind: "move", position };
       const outcome = await executeMove(position, choice, settings, signal,
         /** Keeps late input and retry reports from overwriting STOP or a new position. */
-        (progress) => { if (!signal.aborted) this.patch(progress); });
+        (progress) => { if (!signal.aborted) this.patch(progress); }, budget);
       signal.throwIfAborted();
       if (!outcome.accepted) {
         if (samePosition(readPosition() ?? "", fen)) this.patch({ status: "Move not accepted - press START to retry", color: "#f59e0b" });

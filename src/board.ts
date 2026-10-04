@@ -1,6 +1,7 @@
 /** Exposes common board operations while selecting the current site's provider. */
 import { currentProvider } from "./providers";
 import type { MistakeType } from "./mistake-mode";
+import type { GameClock } from "./providers/clock";
 import { samePosition, type PlayerPosition } from "./providers/position";
 export { samePosition } from "./providers/position";
 
@@ -10,6 +11,8 @@ export function getBoard(): HTMLElement | null { return currentProvider()?.getBo
 export function readPosition(): string | null { return currentProvider()?.readPosition() ?? null; }
 /** Reads the side controlled by the user. */
 export function userColor(): "w" | "b" { return currentProvider()?.userColor() ?? "w"; }
+/** Reads only a visible match clock from the current site. */
+export function readClock(): GameClock | null { return currentProvider()?.readClock() ?? null; }
 /** Detects a drag or promotion chooser. */
 export function boardBusy(): boolean { return currentProvider()?.boardBusy() ?? false; }
 /** Removes ChessBot's suggestions. */

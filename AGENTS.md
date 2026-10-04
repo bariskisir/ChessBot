@@ -8,7 +8,7 @@ ChessBot is a **Chrome Manifest V3 extension** that adds a floating analysis pan
 **Chess.com and Lichess**. The panel analyses the current board with a **local Stockfish 19 WASM**
 engine and can optionally play moves and start follow-up games automatically.
 
-- Version: `2.7.1` (see `package.json` and `public/manifest.json`).
+- Version: `2.8.0` (see `package.json` and `public/manifest.json`).
 - Engine is **100% local**. There is no remote engine, no API key, no engine selector,
   and no network calls for analysis.
 - The overlay behaves the **same regardless of opponent type** (computer bot or human).
@@ -97,8 +97,12 @@ Key behaviour in `src/controller.ts`:
   actions; a `WeakSet` of handled buttons prevents repeat clicks and replayed actions.
 - Analysis and Auto Play only run on the player's turn; opponent positions issue no
   engine requests and display no suggested move.
-- Searches use depth limits and require the selected depth before automatic input.
-  Random Delay controls intentional pre-move waiting; there is no minimum thinking delay.
+- Searches use depth limits. Timed Auto Play can use the best available legal move when
+  its complete turn budget expires; analysis without a clock still requires the selected depth.
+- Dynamic Delay defaults on and distributes live match time over an increment-aware,
+  rolling 40-move forecast. Settling, queued searches, and all verification share one turn
+  target. Its toggle sits beside Auto Play; disabling it reveals Random Delay on the next row.
+  Manual random targets also deduct elapsed work. Untimed dynamic games add no waiting.
 - In Lichess training, failed feedback opens the solution and then clicks Continue
   training only while Auto Play is enabled; correct feedback never triggers it.
 - Best Move with mistakes disabled uses the main search's evaluation at any selected depth.
