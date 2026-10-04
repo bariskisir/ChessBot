@@ -235,7 +235,7 @@ test("Average Move plays a MultiPV mate without averaging or intentional mistake
 
 /** Preserves a mate first discovered by the authoritative depth-15 evaluation. */
 async function deepAverageMateInput(): Promise<void> {
-  const h = harness({ averageMove: true, mistakeProbability: 100, depth: 7 },
+  const h = harness({ engine: "stockfish-19", averageMove: true, mistakeProbability: 100, depth: 7 },
     /** Keeps the shallow search unaware of the mate found by its deeper follow-up. */
     (request) => request.settings.depth === 15
       ? [{ depth: 15, score: 0, mate: 3, moves: ["d2d4"], nodes: 100 }]

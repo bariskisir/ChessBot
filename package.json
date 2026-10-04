@@ -1,8 +1,8 @@
 {
   "name": "chessbot",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "private": true,
-  "description": "Chess.com and Lichess analysis overlay built with React, TypeScript, SCSS and local Stockfish 19.",
+  "description": "Chess.com and Lichess analysis overlay with React, TypeScript, SCSS and local Stockfish and Lozza engines.",
   "type": "module",
   "scripts": {
     "postinstall": "tsx scripts/prepare-vendor.ts",
@@ -17,7 +17,8 @@
     "chess.js": "1.4.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "stockfish": "19.0.0"
+    "stockfish": "19.0.0",
+    "stockfish-10": "npm:stockfish@10.0.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

@@ -1,4 +1,4 @@
-/** Routes document-scoped requests to the local Stockfish offscreen host. */
+/** Routes document-scoped requests to the local chess-engine offscreen host. */
 import type { EngineRequest, EngineResponse } from "./shared";
 import type { InputRequest } from "./input-protocol";
 import { handleInput } from "./trusted-input";
@@ -9,7 +9,7 @@ async function ensureHost(): Promise<void> {
   if (creating) return creating;
   if (await chrome.offscreen.hasDocument()) return;
   if (creating) return creating;
-  creating = chrome.offscreen.createDocument({ url: "offscreen.html", reasons: [chrome.offscreen.Reason.WORKERS], justification: "Run bundled Stockfish 19 locally." });
+  creating = chrome.offscreen.createDocument({ url: "offscreen.html", reasons: [chrome.offscreen.Reason.WORKERS], justification: "Run bundled chess engines locally." });
   try { await creating; } finally { creating = null; }
 }
 

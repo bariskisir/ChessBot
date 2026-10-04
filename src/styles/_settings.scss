@@ -158,6 +158,31 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
 }
 
+.bot-engine-setting {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+
+  > label { margin: 0; white-space: nowrap; }
+}
+
+.bot-engine-setting select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid $border;
+  border-radius: 5px;
+  background: $surface;
+  color: $accent;
+  font: inherit;
+  font-size: $detail-size;
+  cursor: pointer;
+
+  &:focus-visible { outline: 1px solid $accent; outline-offset: 1px; }
+}
+
 .bot-auto-play-row {
   grid-template-columns: minmax(0, 1fr) max-content;
 

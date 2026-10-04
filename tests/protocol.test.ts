@@ -3,11 +3,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Chess } from "chess.js";
 import { DEFAULT_SETTINGS, normalizeSettings, parseInfo } from "../src/shared";
+import { ENGINES } from "../src/engines";
 
 /** Rejects corrupt settings and keeps move animation opt-in for saved preferences. */
 function settingsValidation(): void {
   assert.deepEqual(normalizeSettings(null), DEFAULT_SETTINGS);
   assert.equal(DEFAULT_SETTINGS.depth, 7);
+  assert.equal(DEFAULT_SETTINGS.engine, "lozza-2");
+  for (const engine of ENGINES) assert.equal(normalizeSettings({ engine: engine.id }).engine, engine.id);
+  for (const engine of [null, 10, "lynx", "https://example.com/worker.js"]) assert.equal(normalizeSettings({ engine }).engine, "lozza-2");
   assert.equal(DEFAULT_SETTINGS.autoPlayDelay, 2500);
   assert.equal(DEFAULT_SETTINGS.autoPlay, true);
   assert.equal(DEFAULT_SETTINGS.dynamicDelay, true);
@@ -32,7 +36,7 @@ function settingsValidation(): void {
   assert.equal(restored.mistakeProbability, 90);
   assert.deepEqual(restored.panelPos, { top: "82px", left: "330px" });
 }
-test("settings reject corrupt values and remove legacy engine selection", settingsValidation);
+test("settings validate bundled engines and default missing selections to Lozza 2", settingsValidation);
 
 /** Preserves half-pawn keep choices and migrates the legacy threshold to the keep floor. */
 function mistakeKeepFloor(): void {

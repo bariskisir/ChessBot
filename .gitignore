@@ -9,6 +9,7 @@ artifacts/
 public/vendor/stockfish.js
 public/vendor/stockfish.wasm
 public/vendor/STOCKFISH-LICENSE.txt
+public/vendor/stockfish-10/
 
 # Logs
 *.log

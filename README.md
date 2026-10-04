@@ -2,14 +2,14 @@
 
 ![ChessBot Demo](gameplay.gif)
 
-ChessBot is a Chrome extension for **Chess.com** and **Lichess**. It shows local Stockfish analysis beside supported game boards.
+ChessBot is a Chrome extension for **Chess.com** and **Lichess**. It shows local chess-engine analysis beside supported game boards, with selectable Stockfish and Lozza versions.
 
 ## 🚀 Purpose & Vision
 
 The primary goal of this extension is **education through observation**.
 
 *   **Engine vs. Bot Matchups**: It is built to simulate matches between different engines and Chess.com's computer personalities (bots).
-*   **Learning Tool**: By watching how high-level engines (like Stockfish 19) navigate complex positions against AI, players can improve their tactical awareness and positional understanding.
+*   **Learning Tool**: By watching engines of different strengths navigate complex positions against AI, players can improve their tactical awareness and positional understanding.
 
 > [!WARNING]
 > **STRICT FAIR PLAY POLICY**
@@ -17,7 +17,7 @@ The primary goal of this extension is **education through observation**.
 
 ## ✨ Key Features
 
-*   **Local Stockfish 19**: Runs entirely in your browser via WASM. There is no remote engine or API configuration, and all calculations stay on your device.
+*   **Local Chess Engines**: Choose Lozza 2 (default), Lozza 5, Stockfish 10, or Stockfish 19 Lite. Stockfish uses WASM and Lozza uses JavaScript workers. All calculations stay on your device, with no remote engine or API configuration.
 *   **Real-time Evaluation Bar**: A dynamic, responsive eval bar that shows the advantage from the current player's perspective.
 *   **Auto Play Mode**: Automatically execute engine moves with dynamic clock allocation, or a customizable random delay.
 *   **Auto New Match & Auto Rematch**: Detect game over and start the next game automatically, with 2.5-second delays. On Lichess, an automated follow-up keeps the bot running after navigation to the new round.
@@ -45,7 +45,13 @@ npm run build
 
 Then load the generated `dist` directory as an unpacked extension.
 
-Install and build hooks copy the pinned `stockfish@19.0.0` single-threaded Lite worker, WASM binary, and license into `public/vendor`. To change the engine, bump the package version instead of editing the vendor files.
+Install and build hooks copy the pinned `stockfish@19.0.0` single-threaded Lite worker and `stockfish@10.0.2` WASM build (npm alias `stockfish-10`) into `public/vendor`. Stockfish 10 has no separate Lite edition; its worker and binary total about 430 KB. Change the pinned package versions rather than editing generated assets.
+
+Lozza's unmodified JavaScript sources are bundled from [Lozza 2.0](https://github.com/namanthanki/lozza/tree/3c222b28b76e0e3dc3e5fa417e8aae15642dc114) and [Lozza 5](https://github.com/namanthanki/lozza/tree/3ef2967740e7e1103078531b8b83eb49ceff3b2a). The adapter supplies MultiPV, UCI coordinate moves, and normalized mate scores. STOP terminates synchronous Lozza searches immediately. Stockfish retains its warm worker after a completed search or successful cancellation; switching engines replaces the worker after the current owner's cancellation settles.
+
+The engine menu is sorted by increasing reference rating: Lozza 2 **2554**, Lozza 5 **3071**, Stockfish 10 **3447**, Stockfish 19 Lite **3792**. Lozza and Stockfish 19 use [CCRL Blitz](https://computerchess.org.uk/404/rating_list_all.html); Stockfish 10 uses its [CCRL 40/15 reference from 2024-11-16](https://www.computerchess.org/cgi/engine_details.cgi?eng=Stockfish+10+64-bit&print=Details+%28text%29). Stockfish 19 Lite displays the full engine's rating as a reference. These are different rating pools and are not measured browser ratings; depth, time and the Lite network affect actual playing strength.
+
+Stockfish and these pinned Lozza sources are GPL-3.0; their upstream license texts are included with the vendor assets. ChessBot application code is MIT.
 
 ## ⚙️ How to Use
 
@@ -53,7 +59,9 @@ Install and build hooks copy the pinned `stockfish@19.0.0` single-threaded Lite 
 2.  The **ChessBot** panel will appear on the screen.
 3.  Click **START** to begin board detection and analysis.
 4.  Toggle **AUTO PLAY** if you want the bot to make moves automatically (ideal for engine-vs-bot matches).
-5.  Use the **Advanced Settings** (arrow icon) to adjust Dynamic Delay, Auto New Match, Auto Rematch, average move selection, mistake probability, engine variations (MultiPV), and depth.
+5.  Open **Advanced Settings** (arrow icon). Select the engine above **AUTO PLAY**, then adjust Dynamic Delay, Auto New Match, Auto Rematch, average move selection, mistake probability, engine variations (MultiPV), and depth. The engine choice is saved and changing it cancels pending work before recalculating.
+
+Stockfish verifies average and mistake evaluations at a minimum depth of 15. Lozza verifies at the selected depth so a low-depth search does not silently become a much longer depth-15 search. A proved mate or a sole legal move can finish before the requested depth.
 
 **DYNAMIC DELAY** defaults on beside **AUTO PLAY**. It distributes the remaining match time over an initial 40-move forecast, includes future increments, and extends the forecast as long games develop. Board settling, queued analysis, deep evaluation, and alternative searches share the same turn budget. Time trouble removes intentional waiting and bounds analysis to preserve time for input. Untimed games and training add no dynamic wait. Turn Dynamic Delay off to reveal **RANDOM DELAY** on the next row; its saved maximum remains available and elapsed analysis is deducted from the random target. When a site's time control is unavailable, allocation uses its visible remaining clock conservatively without assuming an increment.
 

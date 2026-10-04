@@ -1,10 +1,10 @@
-/** Copies the pinned npm Stockfish engine and its license into public vendor assets. */
+/** Copies pinned Stockfish WASM builds and their licenses into local vendor assets. */
 import { copyFile, mkdir, readdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Copies the pinned lite-single worker under the generic names loaded by the engine. */
+/** Copies Stockfish 19 Lite and the compact Stockfish 10 WASM package without modification. */
 async function main(): Promise<void> {
   const require = createRequire(import.meta.url);
   const packageRoot = dirname(require.resolve("stockfish/package.json"));
@@ -18,5 +18,10 @@ async function main(): Promise<void> {
   await copyFile(join(bin, script), join(destination, "stockfish.js"));
   await copyFile(join(bin, script.replace(/\.js$/, ".wasm")), join(destination, "stockfish.wasm"));
   await copyFile(join(packageRoot, "Copying.txt"), join(destination, "STOCKFISH-LICENSE.txt"));
+  const legacyRoot = dirname(require.resolve("stockfish-10/package.json"));
+  const legacyDestination = join(destination, "stockfish-10");
+  await mkdir(legacyDestination, { recursive: true });
+  for (const name of ["stockfish.js", "stockfish.wasm"]) await copyFile(join(legacyRoot, "src", name), join(legacyDestination, name));
+  await copyFile(join(legacyRoot, "Copying.txt"), join(legacyDestination, "STOCKFISH-LICENSE.txt"));
 }
 await main();

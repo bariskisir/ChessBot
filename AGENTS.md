@@ -5,12 +5,13 @@ Guidance for AI coding agents working in this repository. Read this before chang
 ## What this project is
 
 ChessBot is a **Chrome Manifest V3 extension** that adds a floating analysis panel to
-**Chess.com and Lichess**. The panel analyses the current board with a **local Stockfish 19 WASM**
-engine and can optionally play moves and start follow-up games automatically.
+**Chess.com and Lichess**. The panel analyses the current board with selectable **local Stockfish and Lozza engines**
+and can optionally play moves and start follow-up games automatically.
 
-- Version: `2.8.0` (see `package.json` and `public/manifest.json`).
-- Engine is **100% local**. There is no remote engine, no API key, no engine selector,
-  and no network calls for analysis.
+- Version: `2.9.0` (see `package.json` and `public/manifest.json`).
+- Engines are **100% local**. Lozza 2 is the default; the advanced settings menu lists
+  Lozza 2, Lozza 5, Stockfish 10 and Stockfish 19 Lite by increasing reference Elo.
+  There is no remote engine, no API key, and no network calls for analysis.
 - The overlay behaves the **same regardless of opponent type** (computer bot or human).
   Do **not** reintroduce route/path gating such as `/play/(computer|bots)` checks.
 - Stack: React 19 + TypeScript + SCSS (compiled to text and injected into a shadow root),
@@ -43,12 +44,13 @@ Developer mode, **Load unpacked**, select `dist/`, then refresh a Chess.com or L
 
 ## Architecture
 
-Three browser entry points are bundled into `dist/`:
+Four browser entry points are bundled into `dist/`:
 
 | Source | Output | Role |
 | --- | --- | --- |
 | `src/background.ts` | `background.js` | MV3 service worker. Routes document-scoped engine requests to the offscreen document and sends trusted input to Lichess through the debugger API. |
-| `src/engine.ts` | `offscreen.js` | Runs inside the offscreen document. Owns the Stockfish worker, a job queue, per-owner cancellation, startup and no-progress watchdogs, depth limits, MultiPV, and UCI identity verification (`id name Stockfish 19`). |
+| `src/engine.ts` | `offscreen.js` | Runs inside the offscreen document. Owns the selected engine worker, a job queue, per-owner cancellation, startup and no-progress watchdogs, depth limits, MultiPV, and version-specific UCI identity verification. |
+| `src/lozza-worker.ts` | `lozza-worker.js` | Adapts the pinned Lozza sources to MultiPV, coordinate moves and normalized UCI mate scores. |
 | `src/content.ts` | `content.js` | Isolated world. Calls `mount()`. |
 
 Content/UI flow (isolated world):
@@ -59,6 +61,8 @@ Content/UI flow (isolated world):
   (`analyzePosition`, `stopAnalysis`, and an abortable `delay`).
 - `src/shared.ts` holds protocol/types, `DEFAULT_SETTINGS`, `normalizeSettings`, and
   `parseInfo` (UCI → Variation, scores normalised to White).
+- `src/engines.ts` holds the fixed local worker catalogue, version identities, reference
+  ratings and verification depths. Worker URLs must never come from persisted settings.
 - `src/storage.ts` persists `Settings` in `chrome.storage.local` and migrates the
   legacy `bot-settings` localStorage entry on first load.
 - `src/providers/` contains the provider contract, host selection, shared FEN utilities,
@@ -86,8 +90,9 @@ Key behaviour in `src/controller.ts`:
 - A mutation observer tracks board/history/clock changes and coalesces checks into
   animation frames; a 300ms `poll()` remains as a fallback. New positions must settle
   across checks, and recorded history must agree with the visible pieces.
-- Stockfish stays alive between searches. Cancellation drains output through
-  `bestmove` before another search starts; stuck or failed workers are replaced.
+- The selected engine stays alive between searches. Stockfish cancellation drains output
+  through `bestmove`; Lozza's synchronous searches are canceled by terminating the worker.
+  Switching engines replaces the worker before starting the next queued job.
 - Move confirmation observes board changes independently of input acknowledgements.
   Input expires after 3 seconds; acknowledged input has a 700ms confirmation deadline.
   STOP or expiry aborts the provider gesture and its pending trusted-input request.
@@ -106,10 +111,11 @@ Key behaviour in `src/controller.ts`:
 - In Lichess training, failed feedback opens the solution and then clicks Continue
   training only while Auto Play is enabled; correct feedback never triggers it.
 - Best Move with mistakes disabled uses the main search's evaluation at any selected depth.
-  Average or mistake selection at depths below 15 uses an additional depth-15 evaluation.
+  Stockfish average or mistake selection below depth 15 adds a depth-15 evaluation;
+  Lozza uses the selected depth. Proved mates and sole legal moves can finish early.
 - Average Move follows the shortest winning mate found in MultiPV or deep evaluation,
   bypassing average selection and intentional mistakes. Otherwise, average candidates
-  are verified at `max(15, settings.depth)` in rank order and must stay at or above zero.
+  are verified at the engine's verification depth in rank order and must stay at or above zero.
 
 ## Build details
 
@@ -120,7 +126,10 @@ to compressed CSS text (never page-global CSS). It wipes and recreates `dist/`, 
 
 - **Never edit `dist/`** — it is generated and deleted on every build.
 - Treat `public/vendor/stockfish.js`, `public/vendor/stockfish.wasm`, and `public/vendor/STOCKFISH-LICENSE.txt` as generated output copied unchanged from the pinned `stockfish` npm package by `scripts/prepare-vendor.ts`; change the package version instead of editing them.
-- Third-party license text lives only in `public/vendor/STOCKFISH-LICENSE.txt`.
+- `public/vendor/stockfish-10/` is generated from the pinned `stockfish-10` npm alias.
+  Lozza 2 and 5 sources are vendored unchanged at the commits documented in README.md;
+  compatibility code belongs in `src/lozza-worker.ts`.
+- Third-party license texts live only beside their engines under `public/vendor/`.
 
 ## Code conventions
 
@@ -157,14 +166,17 @@ These are enforced by `scripts/check-comments.ts` and `tsc`:
 - Intercepted Lichess fixtures verify round and training board reading, both
   orientations, trusted input, partial history, and follow-up controls through
   `scripts/lichess-browser-test.ts`.
+- `scripts/engine-browser-test.ts` verifies every real bundled worker's identity, legal
+  White/Black analysis, MultiPV, promotions, mates and deadlines, plus persisted engine
+  selection and Auto Play through the real offscreen host.
 - The suite must not touch a signed-in live game.
 - No screenshot/artifact files are produced anymore; do not add new ones.
 
 ## Dependency / asset policy
 
-- Runtime deps: `chess.js`, `react`, `react-dom`, plus the pinned `stockfish` npm package as the local-only engine source. Do not add libraries without a
+- Runtime deps: `chess.js`, `react`, `react-dom`, plus pinned `stockfish` and `stockfish-10` npm engine sources. Do not add libraries without a
   clear need; this project intentionally has no UI framework beyond React and no CSS
   framework.
 - Keep the engine local-only and the extension free of remote code.
-- ChessBot application code is MIT (`LICENSE`); Stockfish remains GPL-3.0.
+- ChessBot application code is MIT (`LICENSE`); Stockfish and the pinned Lozza sources are GPL-3.0.
 

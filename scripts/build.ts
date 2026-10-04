@@ -29,9 +29,9 @@ async function main(): Promise<void> {
   if (output !== resolve(root, "dist") || dirname(output) !== root) throw new Error("Unsafe output directory.");
   await rm(output, { recursive: true, force: true });
   await mkdir(output, { recursive: true });
-  await Promise.all([bundle("background.ts", "background.js"), bundle("engine.ts", "offscreen.js"), bundle("content.ts", "content.js")]);
+  await Promise.all([bundle("background.ts", "background.js"), bundle("engine.ts", "offscreen.js"), bundle("content.ts", "content.js"), bundle("lozza-worker.ts", "lozza-worker.js")]);
   for (const name of ["manifest.json", "offscreen.html", "icons"]) await cp(resolve(root, "public", name), resolve(output, name), { recursive: true });
   await cp(resolve(root, "public/vendor"), output, { recursive: true });
-  console.log(`Built ChessBot ${manifest.version} → dist (React, TypeScript, SCSS, local Stockfish 19)`);
+  console.log(`Built ChessBot ${manifest.version} → dist (React, TypeScript, SCSS, local chess engines)`);
 }
 await main();

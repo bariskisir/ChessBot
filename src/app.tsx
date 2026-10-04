@@ -2,9 +2,23 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { Controller, type PanelState } from "./controller";
 import { DEFAULT_SETTINGS, type Settings, type PanelPosition } from "./shared";
+import { ENGINES, getEngine } from "./engines";
 import icon from "../public/icons/icon.svg";
 
 interface SettingProps { settings: Settings; change: (update: Partial<Settings>) => void }
+
+/** Lists local engines by increasing reference Elo above the automation controls. */
+function EngineSelect({ settings, change }: SettingProps) {
+  return <div className="bot-setting-item bot-engine-setting"><label htmlFor="bot-engine-select">ENGINE</label>
+    <select id="bot-engine-select" aria-label="ENGINE" value={settings.engine} title={getEngine(settings.engine).ratingNote} onChange={
+      /** Cancels existing work and persists the selected bundled engine. */
+      (event) => change({ engine: getEngine(event.target.value).id })}>
+      {ENGINES.map(
+        /** Displays reference ratings without implying a browser strength measurement. */
+        (engine) => <option key={engine.id} value={engine.id}>{engine.name} · {engine.elo}</option>)}
+    </select>
+  </div>;
+}
 
 /** Carries continuous panel coordinates to SCSS without presentational declarations. */
 interface PanelVars extends CSSProperties { "--bot-top"?: string | undefined; "--bot-right"?: string | undefined; "--bot-left"?: string | undefined }
@@ -152,6 +166,7 @@ export function App() {
     <div id="bot-status-text" className="bot-status-text" data-tone={STATUS_TONES[state.color] ?? "muted"} role="status">{state.status}</div>
     <div id="bot-panel-footer"><button id="bot-advanced-toggle" className={advanced ? "open" : ""} title="Toggle Settings" aria-label="Toggle Settings" aria-expanded={advanced} aria-controls="bot-advanced-panel" onClick={toggleAdvanced}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6" /></svg></button></div>
     <div id="bot-advanced-panel" className={`bot-advanced-section ${advanced ? "open" : ""}`} hidden={!advanced}>
+      <EngineSelect {...controls} />
       <AutoPlay {...controls} />
       <Toggle label="AUTO NEW MATCH" name="autoNewMatch" {...controls} />
       <Toggle label="AUTO REMATCH" name="autoRematch" {...controls} />

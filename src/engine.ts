@@ -1,14 +1,16 @@
-/** Serializes document-owned searches while keeping the local Stockfish worker warm. */
+/** Serializes document-owned searches and switches between verified local engine workers. */
 import { Chess } from "chess.js";
+import { getEngine, type EngineDefinition } from "./engines";
 import { normalizeSettings, parseInfo, type EngineRequest, type EngineResponse, type Variation } from "./shared";
 interface Job { request: EngineRequest; respond: (response: EngineResponse) => void }
 const queue: Job[] = [];
 let active: Job | null = null, worker: Worker | null = null;
+let workerEngine: EngineDefinition | null = null;
 let phase: "idle" | "booting" | "preparing" | "searching" | "stopping" = "idle";
 let timeout: ReturnType<typeof setTimeout> | undefined;
 let variations: Variation[] = [], verified = false;
 const engineTimeouts = { startup: 20000, searchIdle: 60000, stopping: 2000 };
-let progressNodes = 0, progressDepth = 0;
+const searchProgress = new Map<number, { nodes: number; depth: number }>();
 
 /** Arms the watchdog for engine startup or a period without search progress. */
 function armTimeout(milliseconds: number): void {
@@ -16,7 +18,7 @@ function armTimeout(milliseconds: number): void {
   timeout = setTimeout(onTimeout, milliseconds);
 }
 
-/** Allows long searches to continue while Stockfish keeps reporting useful progress. */
+/** Allows long searches to continue while the engine keeps reporting useful progress. */
 function refreshSearchTimeout(): void {
   if (phase !== "searching" || !active) return;
   armTimeout(engineTimeouts.searchIdle);
@@ -25,16 +27,17 @@ function refreshSearchTimeout(): void {
 /** Prevents repeated informational messages from keeping a stalled search alive indefinitely. */
 function noteSearchProgress(line: string): void {
   const nodes = Number(/\bnodes (\d+)/.exec(line)?.[1] ?? 0), depth = Number(/\bdepth (\d+)/.exec(line)?.[1] ?? 0);
-  if (nodes <= progressNodes && depth <= progressDepth) return;
-  progressNodes = Math.max(progressNodes, nodes);
-  progressDepth = Math.max(progressDepth, depth);
+  const rank = Number(/\bmultipv (\d+)/.exec(line)?.[1] ?? 1);
+  const progress = searchProgress.get(rank) ?? { nodes: 0, depth: 0 };
+  if (nodes <= progress.nodes && depth <= progress.depth) return;
+  searchProgress.set(rank, { nodes: Math.max(progress.nodes, nodes), depth: Math.max(progress.depth, depth) });
   refreshSearchTimeout();
 }
 
 /** Reuses a healthy worker only after its search output has been fully consumed. */
 function finish(response: EngineResponse, reset = false): void {
   clearTimeout(timeout);
-  if (reset) { worker?.terminate(); worker = null; verified = false; }
+  if (reset) { worker?.terminate(); worker = null; workerEngine = null; verified = false; }
   phase = "idle";
   const job = active;
   active = null;
@@ -44,17 +47,17 @@ function finish(response: EngineResponse, reset = false): void {
 }
 
 /** Replaces a stuck worker so queued documents can continue independently. */
-function onTimeout(): void { finish({ error: "Stockfish timed out. Please try again." }, true); }
+function onTimeout(): void { finish({ error: `${workerEngine?.name ?? "Engine"} timed out. Please try again.` }, true); }
 
 /** Drains canceled searches through bestmove before assigning output to another document. */
 function onEngineMessage(event: MessageEvent<string>): void {
   if (typeof event.data !== "string") return;
   const line = event.data.trim();
   if (phase === "booting") {
-    if (line.startsWith("id name ")) verified = /^id name Stockfish 19\b/.test(line);
+    if (line.startsWith("id name ")) verified = workerEngine?.identity.test(line) ?? false;
     if (line !== "uciok") return;
-    if (!verified) { finish({ error: "The bundled engine is not Stockfish 19." }, true); return; }
-    worker!.postMessage("setoption name Hash value 32");
+    if (!verified) { finish({ error: `The bundled engine is not ${workerEngine?.name ?? "the selected engine"}.` }, true); return; }
+    worker!.postMessage(`setoption name Hash value ${workerEngine?.id === "stockfish-10" ? 16 : 32}`);
     phase = "idle";
     clearTimeout(timeout);
     pump();
@@ -84,19 +87,22 @@ function pump(): void {
   active ??= queue.shift() ?? null;
   if (!active) return;
   variations = [];
-  progressNodes = progressDepth = 0;
+  searchProgress.clear();
   try {
     new Chess(active.request.fen);
     armTimeout(engineTimeouts.startup);
+    const selected = getEngine(active.request.settings.engine);
+    if (worker && workerEngine?.id !== selected.id) { worker.terminate(); worker = null; }
     if (!worker) {
-      const current = new Worker("stockfish.js");
+      workerEngine = selected;
+      const current = new Worker(selected.worker);
       worker = current;
       phase = "booting";
       verified = false;
       /** Ignores already-queued callbacks from workers replaced after failure. */
       current.onmessage = (event) => { if (worker === current) onEngineMessage(event); };
       /** Reports failures only for the currently owned worker. */
-      current.onerror = (event) => { if (worker === current) finish({ error: `Stockfish could not start: ${event.message}` }, true); };
+      current.onerror = (event) => { if (worker === current) finish({ error: `${selected.name} could not start: ${event.message}` }, true); };
       current.postMessage("uci");
     } else {
       phase = "preparing";
@@ -117,6 +123,7 @@ function cancel(owner: string): void {
   variations = [];
   job.respond({ error: "Analysis canceled." });
   if (phase === "searching") {
+    if (!workerEngine?.interruptible) { finish({ error: "Analysis canceled." }, true); return; }
     phase = "stopping";
     armTimeout(engineTimeouts.stopping);
     worker!.postMessage("stop");

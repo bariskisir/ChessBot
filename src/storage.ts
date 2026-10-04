@@ -12,7 +12,7 @@ export async function loadSettings(): Promise<Settings> {
   return settings;
 }
 
-/** Saves the full preference set without storing an engine selector. */
+/** Saves the selected engine alongside automation preferences and panel position. */
 export async function saveSettings(settings: Settings): Promise<void> {
   await chrome.storage.local.set({ botSettings: normalizeSettings(settings) });
 }

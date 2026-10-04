@@ -1,6 +1,8 @@
 /** Defines the local engine protocol and validates persisted preferences. */
+import { getEngine, type EngineId } from "./engines";
 export interface PanelPosition { top: string; left?: string; right?: string }
 export interface Settings {
+  engine: EngineId;
   depth: number; lines: number; autoPlay: boolean;
   autoPlayDelay: number; dynamicDelay: boolean; autoNewMatch: boolean; autoRematch: boolean;
   averageMove: boolean; animateMoves: boolean; mistakeProbability: number; mistakeKeep: number; panelPos: PanelPosition;
@@ -11,6 +13,7 @@ export interface EngineRequest { target: "background" | "engine"; action: "analy
 export type SearchDeadline = () => number | null;
 export type EngineResponse = { result: Analysis } | { error: string };
 export const DEFAULT_SETTINGS: Settings = {
+  engine: "lozza-2",
   depth: 7, lines: 10, autoPlay: true, autoPlayDelay: 2500, dynamicDelay: true,
   autoNewMatch: true, autoRematch: false, averageMove: true, animateMoves: false, mistakeProbability: 25,
   mistakeKeep: 2, panelPos: { top: "10px", right: "10px" },
@@ -29,6 +32,7 @@ export function normalizeSettings(value: unknown): Settings {
   else panelPos.right = positionValue(data.panelPos?.right, "10px");
   const legacyThreshold = (data as { mistakeThreshold?: unknown }).mistakeThreshold;
   return {
+    engine: getEngine(data.engine).id,
     depth: bounded(data.depth, 7, 1, 30), lines: bounded(data.lines, 10, 1, 10),
     autoPlay: typeof data.autoPlay === "boolean" ? data.autoPlay : true,
     dynamicDelay: typeof data.dynamicDelay === "boolean" ? data.dynamicDelay : true,

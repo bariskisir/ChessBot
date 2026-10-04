@@ -8,6 +8,8 @@ import { Chess } from "chess.js";
 import { chromium, expect, type Page } from "@playwright/test";
 import type {} from "../tests/board-fixture";
 import { verifyLichess } from "./lichess-browser-test";
+import { verifyEngineSelections, verifyEngineWorkers } from "./engine-browser-test";
+import { ENGINES } from "../src/engines";
 declare global { interface Window { ChessbotBoardTest: typeof import("../src/board") } }
 
 /** Exercises instant and animated promotions, delayed choosers, interruption, and recovery. */
@@ -298,13 +300,20 @@ async function openBoard(): Promise<Page> {
 }
 
 try {
+  await verifyEngineWorkers(context);
   const page = await openBoard();
   await expect(page.locator(".bot-panel-header h3")).toContainText("CHESS BOT");
   await expect(page.locator(".bot-version")).toHaveText(`v${manifest.version}`);
   await expect(page.locator("#best-move-text")).toHaveText("---");
   await expect(page.locator("#bot-eval-text")).toHaveText("0.00");
   await page.getByRole("button", { name: "Toggle Settings" }).click();
-  await expect(page.locator("#bot-engine-select")).toHaveCount(0);
+  await expect(page.getByLabel("ENGINE", { exact: true })).toHaveValue("lozza-2");
+  assert.deepEqual(await page.locator("#bot-engine-select option").allTextContents(), ENGINES.map(
+    /** Checks the same ascending reference rating order shown to users. */
+    (engine) => `${engine.name} · ${engine.elo}`));
+  const engineSelect = await page.getByLabel("ENGINE", { exact: true }).boundingBox();
+  const firstToggle = await page.getByLabel("AUTO PLAY", { exact: true }).boundingBox();
+  assert.ok(engineSelect && firstToggle && engineSelect.y + engineSelect.height < firstToggle.y);
   await expect(page.locator("#bot-fen-text")).toHaveCount(0);
   for (const name of ["AUTO PLAY", "DYNAMIC DELAY", "AUTO NEW MATCH", "AUTO REMATCH", "AVERAGE MOVE", "ANIMATE MOVES"]) await expect(page.getByLabel(name, { exact: true })).toBeVisible();
   await expect(page.getByLabel("ANIMATE MOVES", { exact: true })).not.toBeChecked();
@@ -345,6 +354,7 @@ try {
         (part) => part.getBoundingClientRect().right <= row.getBoundingClientRect().right + 1)));
   assert.equal(rowsFit, true);
   await expect(page.getByLabel("DEPTH", { exact: true })).toHaveValue("6");
+  await verifyEngineSelections(page, setRange);
   await page.getByRole("button", { name: "START", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Analyzing Board", { timeout: 25000 });
   await expect(page.locator("#best-move-text")).toHaveText(/^[A-H][1-8][A-H][1-8][QRBN]?$/);

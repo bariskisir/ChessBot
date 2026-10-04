@@ -1,6 +1,7 @@
-/** Restores probability-based safe mistakes using only local Stockfish searches. */
+/** Selects probability-based safe mistakes using the selected local engine. */
 import { Chess } from "chess.js";
 import { analyzePosition } from "./engine-client";
+import { getEngine } from "./engines";
 import type { SearchDeadline, Settings, Variation } from "./shared";
 export type MistakeType = "mistake";
 export interface MistakeResult { move: string; score: number; type: MistakeType }
@@ -20,7 +21,7 @@ export function chooseMistake(current: MistakeResult | null, move: string, score
 
 /** Uses authoritative depth within the same turn deadline as the main search. */
 export async function evaluatePosition(fen: string, settings: Settings, signal: AbortSignal, getDeadline?: SearchDeadline): Promise<Variation | undefined> {
-  const result = await analyzePosition(fen, { ...settings, depth: Math.max(15, settings.depth), lines: 1 }, signal, getDeadline);
+  const result = await analyzePosition(fen, { ...settings, depth: Math.max(getEngine(settings.engine).verificationDepth, settings.depth), lines: 1 }, signal, getDeadline);
   return result.variations[0];
 }
 

@@ -4,6 +4,7 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 import { buildSync } from "esbuild";
 import { DEFAULT_SETTINGS, type EngineRequest, type EngineResponse } from "../src/shared";
+import { ENGINES, getEngine, type EngineId } from "../src/engines";
 
 const bundle = buildSync({ entryPoints: ["src/engine.ts"], bundle: true, write: false, format: "iife", platform: "browser" }).outputFiles[0]!.text;
 const fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -21,7 +22,7 @@ function harness() {
     onmessage?: (event: { data: string }) => void;
     onerror?: (event: { message: string }) => void;
     /** Exposes worker creation counts for reuse assertions. */
-    constructor() { workers.push(this); }
+    constructor(readonly url: string) { workers.push(this); }
     /** Records UCI commands without synthesizing automatic replies. */
     postMessage(command: string): void { this.commands.push(command); }
     /** Retains callbacks to reproduce already-queued events from a dead worker. */
@@ -41,9 +42,9 @@ function harness() {
     } } },
   });
   /** Sends one request and retains asynchronous responses for exact-count assertions. */
-  function request(owner: string, action: "analyze" | "stop" = "analyze", lines = 10, deadline?: number) {
+  function request(owner: string, action: "analyze" | "stop" = "analyze", lines = 10, deadline?: number, engine: EngineId = "stockfish-19") {
     const replies: EngineResponse[] = [];
-    listener({ target: "engine", owner, action, fen, settings: { ...DEFAULT_SETTINGS, lines }, ...(deadline === undefined ? {} : { deadline }) }, {},
+    listener({ target: "engine", owner, action, fen, settings: { ...DEFAULT_SETTINGS, engine, lines }, ...(deadline === undefined ? {} : { deadline }) }, {},
       /** Collects responses without hiding duplicate completions. */
       (response) => replies.push(response));
     return replies;
@@ -187,3 +188,126 @@ function invalidDeadline(): void {
   worker.emit("bestmove e2e4");
 }
 test("invalid deadlines cannot reach the engine protocol", invalidDeadline);
+
+for (const engine of ENGINES) {
+  /** Verifies each catalogue entry boots its own worker and returns the selected engine's output. */
+  test(`${engine.name} selects and verifies its bundled worker`, () => {
+    const h = harness();
+    const replies = h.request("a", "analyze", 3, undefined, engine.id);
+    const worker = h.workers[0]!;
+    assert.equal(worker.url, engine.worker);
+    worker.emit(`id name ${engine.id === "lozza-2" ? "Lozza 2.0" : engine.id === "stockfish-10" ? "Stockfish.js 10 by T. Romstad" : engine.name.replace(" Lite", "")}`);
+    worker.emit("uciok");
+    assert.equal(worker.commands.at(-2), "setoption name MultiPV value 3");
+    worker.emit("readyok");
+    worker.emit("info depth 7 multipv 1 score cp 25 nodes 100 pv e2e4 e7e5");
+    worker.emit("bestmove e2e4");
+    assert.equal(replies.length, 1);
+    assert.ok(replies[0] && "result" in replies[0]);
+    assert.equal(replies[0].result.variations[0]?.depth, 7);
+    assert.equal(replies[0].result.bestMove, "e2e4");
+  });
+
+  /** Rejects a different version even when it speaks a valid UCI protocol. */
+  test(`${engine.name} rejects an unexpected engine identity`, () => {
+    const h = harness();
+    const replies = h.request("a", "analyze", 1, undefined, engine.id);
+    const worker = h.workers[0]!;
+    worker.emit("id name Stockfish 8");
+    worker.emit("uciok");
+    assert.ok(replies[0] && "error" in replies[0]);
+    assert.match(replies[0].error, /bundled engine/);
+    assert.equal(worker.terminated, true);
+  });
+
+  /** Checks each version's cancellation policy without completing the canceled response twice. */
+  test(`${engine.name} cancels searches before releasing another owner's job`, () => {
+    const h = harness();
+    const first = h.request("a", "analyze", 1, undefined, engine.id);
+    const old = h.workers[0]!;
+    old.emit(`id name ${engine.id === "lozza-2" ? "Lozza 2.0" : engine.id === "stockfish-10" ? "Stockfish.js 10" : engine.name.replace(" Lite", "")}`);
+    old.emit("uciok");
+    old.emit("readyok");
+    const next = h.request("b", "analyze", 1, undefined, engine.id);
+    h.request("a", "stop");
+    assert.equal(first.length, 1);
+    if (engine.interruptible) {
+      assert.equal(old.commands.at(-1), "stop");
+      assert.equal(next.length, 0);
+      old.emit("bestmove a2a3");
+      old.emit("readyok");
+      old.emit("bestmove e2e4");
+    } else {
+      assert.equal(old.terminated, true);
+      const current = h.workers[1]!;
+      old.emit("bestmove a2a3");
+      current.emit(`id name ${engine.id === "lozza-2" ? "Lozza 2.0" : "Lozza 5"}`);
+      current.emit("uciok");
+      current.emit("readyok");
+      current.emit("bestmove e2e4");
+    }
+    assert.equal(first.length, 1);
+    assert.equal(next.length, 1);
+  });
+}
+
+/** Tracks each sequential Lozza rank independently without treating repeated output as progress. */
+function sequentialProgress(): void {
+  const h = harness();
+  h.request("a");
+  const worker = h.boot();
+  worker.emit("info depth 20 multipv 1 score cp 25 nodes 10000 pv e2e4");
+  const firstTimer = [...h.timers.keys()][0];
+  worker.emit("info depth 1 multipv 2 score cp 20 nodes 10 pv d2d4");
+  const secondTimer = [...h.timers.keys()][0];
+  assert.notEqual(secondTimer, firstTimer);
+  worker.emit("info depth 1 multipv 2 score cp 20 nodes 10 pv d2d4");
+  assert.equal([...h.timers.keys()][0], secondTimer);
+  worker.emit("bestmove e2e4");
+}
+test("sequential MultiPV ranks refresh the watchdog only for new progress", sequentialProgress);
+
+/** Switches queued tabs to their requested version and ignores callbacks from the replaced worker. */
+function switchEngines(): void {
+  const h = harness();
+  const first = h.request("a");
+  const old = h.boot();
+  const next = h.request("b", "analyze", 2, undefined, "lozza-2");
+  old.emit("bestmove e2e4");
+  assert.equal(first.length, 1);
+  assert.equal(old.terminated, true);
+  const current = h.workers[1]!;
+  assert.equal(current.url, getEngine("lozza-2").worker);
+  old.emit("bestmove a2a3");
+  old.onerror?.({ message: "late failure" });
+  assert.equal(next.length, 0);
+  current.emit("id name Lozza 2.0");
+  current.emit("uciok");
+  current.emit("readyok");
+  current.emit("bestmove d2d4");
+  assert.equal(next.length, 1);
+}
+test("queued owners switch engines without accepting stale output", switchEngines);
+
+/** Terminates synchronous Lozza searches immediately so another tab can run without a stop watchdog. */
+function cancelLozza(): void {
+  const h = harness();
+  const first = h.request("a", "analyze", 1, undefined, "lozza-2");
+  const old = h.workers[0]!;
+  old.emit("id name Lozza 2.0");
+  old.emit("uciok");
+  old.emit("readyok");
+  const next = h.request("b");
+  h.request("a", "stop");
+  assert.equal(first.length, 1);
+  assert.equal(old.terminated, true);
+  assert.equal(h.workers.length, 2);
+  old.emit("bestmove a2a3");
+  const current = h.workers[1]!;
+  current.emit("id name Stockfish 19");
+  current.emit("uciok");
+  current.emit("readyok");
+  current.emit("bestmove e2e4");
+  assert.equal(next.length, 1);
+}
+test("Lozza cancellation immediately releases the queued owner", cancelLozza);

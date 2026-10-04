@@ -2,6 +2,7 @@
 import { Chess } from "chess.js";
 import { isCurrentPosition } from "./board";
 import { analyzePosition } from "./engine-client";
+import { getEngine } from "./engines";
 import { evaluatePosition, findMistake, playerScore } from "./mistake-mode";
 import { chooseMatingMove, chooseVerifiedAverageMove } from "./move-selection";
 import type { PlayerPosition } from "./providers/position";
@@ -21,11 +22,11 @@ export async function analyzeMove(position: PlayerPosition, settings: Settings, 
   const result = await analyzePosition(fen, { ...settings, lines: settings.averageMove ? settings.lines : 1 }, signal, budget?.getSearchDeadline);
   if (!isCurrentPosition(position)) return null;
   let evaluation = result.variations[0];
-  if ((!evaluation || evaluation.depth < settings.depth) && !result.timeLimited) {
-    throw new Error(`Stockfish reached depth ${evaluation?.depth ?? 0}, below the selected depth ${settings.depth}. Move withheld.`);
+  if ((!evaluation || evaluation.depth < settings.depth && evaluation.mate === null && new Chess(fen).moves().length > 1) && !result.timeLimited) {
+    throw new Error(`${getEngine(settings.engine).name} reached depth ${evaluation?.depth ?? 0}, below the selected depth ${settings.depth}. Move withheld.`);
   }
   budget?.remember({ move: result.bestMove, mistake: false, evaluation });
-  if (settings.depth < 15 && (settings.averageMove || settings.mistakeProbability > 0)) {
+  if (settings.depth < getEngine(settings.engine).verificationDepth && (settings.averageMove || settings.mistakeProbability > 0)) {
     report({ status: "Evaluating position...", color: "#3b82f6" });
     evaluation = await evaluatePosition(fen, settings, signal, budget?.getSearchDeadline) ?? evaluation;
     if (!isCurrentPosition(position)) return null;

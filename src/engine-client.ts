@@ -1,4 +1,4 @@
-/** Provides a single local Stockfish transport for analysis and mistake searches. */
+/** Provides local-engine transport for analysis and mistake searches. */
 import type { Analysis, EngineResponse, SearchDeadline, Settings } from "./shared";
 let stopping: Promise<void> = Promise.resolve();
 
@@ -19,7 +19,7 @@ export async function analyzePosition(fen: string, settings: Settings, signal: A
       chrome.runtime.sendMessage({ target: "background", action: "analyze", fen, settings, ...(deadline != null ? { deadline } : {}) }), cancelled,
     ]);
     signal.throwIfAborted();
-    if (!response || "error" in response) throw new Error(response?.error ?? "No response from Stockfish.");
+    if (!response || "error" in response) throw new Error(response?.error ?? "No response from the chess engine.");
     if (response.result.fen !== fen) throw new Error("The analyzed position changed.");
     return response.result;
   } finally { signal.removeEventListener("abort", abort); }
