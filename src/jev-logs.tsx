@@ -14,9 +14,26 @@ function LogSection({ title, children, expanded = false }: { title: string; chil
   </details>;
 }
 
+/** Returns the display name shown on the log viewer for the selected engine. */
+function providerName(engine: Settings["engine"]): string {
+  if (engine === "laya") return "Laya";
+  if (engine === "openrouter-clef") return "Clef";
+  if (engine === "openrouter-clef-flash") return "Clef Flash";
+  return "Jev";
+}
+
+/** Returns the lowercase log button label without spaces for the selected engine. */
+function logSlug(engine: Settings["engine"]): string {
+  if (engine === "laya") return "laya-logs";
+  if (engine === "openrouter-clef") return "clef-logs";
+  if (engine === "openrouter-clef-flash") return "clef-flash-logs";
+  return "jev-logs";
+}
+
 /** Restores shared per-tab traffic with labels matching the selected decision provider. */
 export function JevLogs({ container, engine }: { container: HTMLDivElement | null; engine: Settings["engine"] }) {
-  const provider = engine === "laya" ? "Laya" : "Jev";
+  const provider = providerName(engine);
+  const slug = logSlug(engine);
   const [entries, setEntries] = useState<JevLog[]>([]);
   const [open, setOpen] = useState(false);
   const [height, setHeight] = useState(0);
@@ -92,7 +109,7 @@ export function JevLogs({ container, engine }: { container: HTMLDivElement | nul
   const style: LogVars = { "--bot-log-height": `${height}px` };
 
   return <>
-    <button id="bot-jev-logs" ref={trigger} onClick={toggle} aria-expanded={open} aria-controls="bot-jev-panel">{provider.toLowerCase()}-logs</button>
+    <button id="bot-jev-logs" ref={trigger} onClick={toggle} aria-expanded={open} aria-controls="bot-jev-panel">{slug}</button>
     {open && container && createPortal(<aside id="bot-jev-panel" className="bot-jev-panel" style={style} aria-label={`${provider} logs`} onKeyDown={
       /** Supports Escape without making the chess board inert. */
       (event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); } }}>
@@ -121,7 +138,7 @@ export function JevLogs({ container, engine }: { container: HTMLDivElement | nul
             <LogSection title="Body" expanded>{entry.response ? <pre data-log="response-body">{formatLogBody(entry.response.body)}</pre> : <p>{entry.status === "pending" ? "Waiting for response…" : "No response received."}</p>}</LogSection>
           </LogSection>
         </div>
-      </div> : <p>No decision requests yet. Jev and Laya calls appear here automatically.</p>}
+      </div> : <p>No decision requests yet. OpenRouter and Laya calls appear here automatically.</p>}
       </div>
       <footer className="bot-log-cost" aria-label="Total cost">Total cost: ${totalJevCost(entries).toFixed(8)}</footer>
     </aside>, container)}

@@ -1,5 +1,5 @@
-/** Routes document-scoped requests to Stockfish, Jev or cancelable Laya decisions. */
-import { analyzeJev } from "./jev";
+/** Routes document-scoped requests to Stockfish, OpenRouter or cancelable Laya decisions. */
+import { analyzeOpenRouter, openRouterName } from "./jev";
 import { analyzeLaya } from "./laya";
 import { normalizeSettings } from "./shared";
 import type { EngineRequest, EngineResponse } from "./shared";
@@ -19,7 +19,7 @@ async function ensureHost(): Promise<void> {
   try { await creating; } finally { creating = null; }
 }
 
-/** Bounds queued Laya jobs and direct Jev calls independently with document-scoped cancellation. */
+/** Bounds queued Laya jobs and direct OpenRouter calls independently with document-scoped cancellation. */
 async function route(request: EngineRequest, sender: chrome.runtime.MessageSender): Promise<EngineResponse | undefined> {
   const owner = `${sender.tab?.id ?? "extension"}:${sender.documentId ?? sender.url}`;
   const revision = (revisions.get(owner) ?? 0) + 1;
@@ -50,10 +50,10 @@ async function route(request: EngineRequest, sender: chrome.runtime.MessageSende
           /** A closed tab has no viewer to notify. */
           () => {}));
     }
-    const provider = settings.engine === "laya" ? "Laya" : "Jev";
+    const provider = settings.engine === "laya" ? "Laya" : settings.engine === "stockfish-18" ? "Stockfish" : openRouterName(settings.engine);
     try { return { result: await (settings.engine === "laya"
       ? analyzeLaya(request.fen, settings.layaKey, controller.signal, fetch, publish)
-      : analyzeJev(request.fen, settings.openRouterKey, controller.signal, fetch, publish)) }; }
+      : analyzeOpenRouter(settings.engine, request.fen, settings.openRouterKey, controller.signal, fetch, publish)) }; }
     catch (error) { return { error: controller.signal.aborted ? `${provider} analysis canceled or timed out.` : error instanceof Error ? error.message : `${provider} request failed.` }; }
     finally { clearTimeout(timer); if (pending.get(owner) === controller) pending.delete(owner); }
   }

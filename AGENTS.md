@@ -9,12 +9,14 @@ ChessBot is a **Chrome Manifest V3 extension** that adds a floating analysis pan
 move decisions and can optionally play moves and start follow-up games automatically.
 
 - Version: `2.0.2` (see `package.json` and `public/manifest.json`).
-- Engines: **stockfish-18** runs locally; **openrouter-jev** sends FEN and legal moves
-  to OpenRouter Decisions using `~typesafe/jev-latest` and a locally saved API key.
+- Engines: **stockfish-18** runs locally; **openrouter-jev**, **openrouter-clef** and
+  **openrouter-clef-flash** send FEN and legal moves to OpenRouter Decisions using
+  `~typesafe/jev-latest`, `cloudflare/clef` and `cloudflare/clef-flash` with a shared
+  locally saved API key.
   **laya** sends FEN and the first 50 legal moves to `laya-api.de/api/v1/systemone?wait=10`
   with `laya-latest` and a separately saved API key. Queued jobs are polled once per
   second and read from `result.answers`; forced single moves need no API request.
-  Jev and Laya never invoke Stockfish, analyze opponents, or use depth, variations,
+  Jev, Clef and Laya never invoke Stockfish, analyze opponents, or use depth, variations,
   evaluation scores, average moves or mistake mode.
 - The overlay behaves the **same regardless of opponent type** (computer bot or human).
   Do **not** reintroduce route/path gating such as `/play/(computer|bots)` checks.

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } fr
 import { Controller, type PanelState } from "./controller";
 import { DEFAULT_SETTINGS, type Settings, type PanelPosition } from "./shared";
 import icon from "../public/icons/icon.svg";
-import { JEV_MODEL } from "./jev";
+import { isOpenRouterEngine, OPENROUTER_MODELS } from "./jev";
 import { JevLogs } from "./jev-logs";
 
 interface SettingProps { settings: Settings; change: (update: Partial<Settings>) => void }
@@ -16,6 +16,12 @@ interface EvalVars extends CSSProperties { "--bot-white"?: string | undefined }
 
 /** Maps engine status colors to SCSS tone names so TS never declares colors. */
 const STATUS_TONES: Record<string, string> = { "#9ca3af": "muted", "#10b981": "success", "#3b82f6": "info", "#ef4444": "danger", "#f59e0b": "warning", "#f97316": "ember" };
+
+/** Keeps unknown dropdown values on the local engine while accepting every hosted option. */
+function parseEngineOption(value: string): Settings["engine"] {
+  if (value === "laya" || isOpenRouterEngine(value)) return value;
+  return "stockfish-18";
+}
 
 /** Renders a compact labeled checkbox without changing its saved behavior. */
 function Toggle({ label, name, settings, change }: SettingProps & { label: string; name: "autoPlay" | "autoNewMatch" | "autoRematch" | "analyzeOpponent" | "averageMove" }) {
@@ -129,14 +135,14 @@ export function App() {
     <div id="bot-advanced-panel" className={`bot-advanced-section ${advanced ? "open" : ""}`} hidden={!advanced}>
       <div className="bot-setting-item"><label htmlFor="bot-engine">ENGINE</label><select id="bot-engine" value={state.settings.engine} onChange={
         /** Switches providers and cancels any pending decision. */
-        (event) => change({ engine: event.target.value === "laya" ? "laya" : event.target.value === "openrouter-jev" ? "openrouter-jev" : "stockfish-18" })}>
-        <option value="stockfish-18">stockfish-18</option><option value="openrouter-jev">openrouter-jev</option><option value="laya">laya</option>
+        (event) => change({ engine: parseEngineOption(event.target.value) })}>
+        <option value="stockfish-18">stockfish-18</option><option value="openrouter-jev">openrouter-jev</option><option value="openrouter-clef">openrouter-clef</option><option value="openrouter-clef-flash">openrouter-clef-flash</option><option value="laya">laya</option>
       </select></div>
-      {state.settings.engine === "openrouter-jev" && <div className="bot-setting-item">
+      {isOpenRouterEngine(state.settings.engine) && <div className="bot-setting-item">
         <label htmlFor="bot-openrouter-key">OPENROUTER API KEY</label><input id="bot-openrouter-key" type="password" autoComplete="off" spellCheck={false} value={state.settings.openRouterKey} onChange={
           /** Saves the key locally and cancels work using the old credential. */
           (event) => change({ openRouterKey: event.target.value })} />
-        <p className="bot-engine-note">{JEV_MODEL}. Key saved on this device. FEN and legal moves are sent to OpenRouter.</p>
+        <p className="bot-engine-note">{OPENROUTER_MODELS[state.settings.engine]}. Key saved on this device. FEN and legal moves are sent to OpenRouter.</p>
       </div>}
       {state.settings.engine === "laya" && <div className="bot-setting-item">
         <label htmlFor="bot-laya-key">LAYA API KEY</label><a className="bot-provider-link" href="https://laya-api.de" target="_blank" rel="noopener noreferrer">laya-api.de</a>
