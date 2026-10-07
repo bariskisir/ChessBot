@@ -1,4 +1,4 @@
-/** Selects legal chess moves through OpenRouter Decisions for Jev, Clef and Luna models. */
+/** Selects legal chess moves through OpenRouter Decisions for Jev, Clef, Luna and Liquid models. */
 import { analyzeDecision, buildMoveDecision, parseMoveDecision, type MoveDecision } from "./decision";
 import type { Analysis } from "./shared";
 import type { JevLog } from "./jev-log";
@@ -7,10 +7,11 @@ export const JEV_MODEL = "~typesafe/jev-latest";
 export const CLEF_MODEL = "cloudflare/clef";
 export const CLEF_FLASH_MODEL = "cloudflare/clef-flash";
 export const LUNA_MODEL = "openai/gpt-6-luna-decisions";
+export const LIQUID_MODEL = "liquid/d1";
 export const JEV_URL = "https://openrouter.ai/api/alpha/decisions";
 
 /** Engine options sharing the OpenRouter Decisions transport and API key. */
-export type OpenRouterEngine = "openrouter-jev" | "openrouter-clef" | "openrouter-clef-flash" | "openrouter-luna";
+export type OpenRouterEngine = "openrouter-jev" | "openrouter-clef" | "openrouter-clef-flash" | "openrouter-luna" | "openrouter-liquid";
 
 /** Maps each OpenRouter engine option to its Decisions model. */
 export const OPENROUTER_MODELS: Record<OpenRouterEngine, string> = {
@@ -18,11 +19,12 @@ export const OPENROUTER_MODELS: Record<OpenRouterEngine, string> = {
   "openrouter-clef": CLEF_MODEL,
   "openrouter-clef-flash": CLEF_FLASH_MODEL,
   "openrouter-luna": LUNA_MODEL,
+  "openrouter-liquid": LIQUID_MODEL,
 };
 
 /** Checks whether an engine option uses the shared OpenRouter Decisions transport. */
 export function isOpenRouterEngine(engine: string): engine is OpenRouterEngine {
-  return engine === "openrouter-jev" || engine === "openrouter-clef" || engine === "openrouter-clef-flash" || engine === "openrouter-luna";
+  return engine === "openrouter-jev" || engine === "openrouter-clef" || engine === "openrouter-clef-flash" || engine === "openrouter-luna" || engine === "openrouter-liquid";
 }
 
 /** Returns the display name used in errors and logs for an OpenRouter engine. */
@@ -30,6 +32,7 @@ export function openRouterName(engine: OpenRouterEngine | string): string {
   if (engine === "openrouter-clef") return "Clef";
   if (engine === "openrouter-clef-flash") return "Clef Flash";
   if (engine === "openrouter-luna") return "Luna 6";
+  if (engine === "openrouter-liquid") return "Liquid D1";
   return "Jev";
 }
 
@@ -80,4 +83,9 @@ export function analyzeClefFlash(fen: string, apiKey: string, signal: AbortSigna
 /** Uses only OpenRouter credentials and the Luna 6 endpoint for this decision. */
 export function analyzeLuna(fen: string, apiKey: string, signal: AbortSignal, fetcher: typeof fetch = fetch, onLog?: (entry: JevLog) => void): Promise<Analysis> {
   return analyzeOpenRouter("openrouter-luna", fen, apiKey, signal, fetcher, onLog);
+}
+
+/** Uses only OpenRouter credentials and the Liquid D1 endpoint for this decision. */
+export function analyzeLiquid(fen: string, apiKey: string, signal: AbortSignal, fetcher: typeof fetch = fetch, onLog?: (entry: JevLog) => void): Promise<Analysis> {
+  return analyzeOpenRouter("openrouter-liquid", fen, apiKey, signal, fetcher, onLog);
 }
