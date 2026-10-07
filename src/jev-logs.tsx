@@ -19,6 +19,7 @@ function providerName(engine: Settings["engine"]): string {
   if (engine === "laya") return "Laya";
   if (engine === "openrouter-clef") return "Clef";
   if (engine === "openrouter-clef-flash") return "Clef Flash";
+  if (engine === "openrouter-luna") return "Luna 6";
   return "Jev";
 }
 
@@ -27,6 +28,7 @@ function logSlug(engine: Settings["engine"]): string {
   if (engine === "laya") return "laya-logs";
   if (engine === "openrouter-clef") return "clef-logs";
   if (engine === "openrouter-clef-flash") return "clef-flash-logs";
+  if (engine === "openrouter-luna") return "luna-logs";
   return "jev-logs";
 }
 

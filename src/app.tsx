@@ -136,7 +136,7 @@ export function App() {
       <div className="bot-setting-item"><label htmlFor="bot-engine">ENGINE</label><select id="bot-engine" value={state.settings.engine} onChange={
         /** Switches providers and cancels any pending decision. */
         (event) => change({ engine: parseEngineOption(event.target.value) })}>
-        <option value="stockfish-18">stockfish-18</option><option value="openrouter-jev">openrouter-jev</option><option value="openrouter-clef">openrouter-clef</option><option value="openrouter-clef-flash">openrouter-clef-flash</option><option value="laya">laya</option>
+        <option value="stockfish-18">stockfish-18</option><option value="openrouter-jev">openrouter-jev</option><option value="openrouter-clef">openrouter-clef</option><option value="openrouter-clef-flash">openrouter-clef-flash</option><option value="openrouter-luna">openrouter-luna</option><option value="laya">laya</option>
       </select></div>
       {isOpenRouterEngine(state.settings.engine) && <div className="bot-setting-item">
         <label htmlFor="bot-openrouter-key">OPENROUTER API KEY</label><input id="bot-openrouter-key" type="password" autoComplete="off" spellCheck={false} value={state.settings.openRouterKey} onChange={

@@ -1,7 +1,7 @@
 /** Defines the engine protocol and validates persisted preferences. */
 export interface PanelPosition { top: string; left?: string; right?: string }
 export interface Settings {
-  engine: "stockfish-18" | "openrouter-jev" | "openrouter-clef" | "openrouter-clef-flash" | "laya"; openRouterKey: string; layaKey: string;
+  engine: "stockfish-18" | "openrouter-jev" | "openrouter-clef" | "openrouter-clef-flash" | "openrouter-luna" | "laya"; openRouterKey: string; layaKey: string;
   depth: number; time: number; lines: number; autoPlay: boolean;
   autoPlayDelay: number; autoNewMatch: boolean; autoRematch: boolean; analyzeOpponent: boolean;
   averageMove: boolean; mistakeProbability: number; thinkingTime: number; panelPos: PanelPosition;
@@ -29,7 +29,7 @@ export function normalizeSettings(value: unknown): Settings {
   if (data.panelPos?.left !== undefined) panelPos.left = positionValue(data.panelPos.left, "10px");
   else panelPos.right = positionValue(data.panelPos?.right, "10px");
   return {
-    engine: data.engine === "openrouter-jev" || data.engine === "openrouter-clef" || data.engine === "openrouter-clef-flash" || data.engine === "laya" ? data.engine : "stockfish-18",
+    engine: data.engine === "openrouter-jev" || data.engine === "openrouter-clef" || data.engine === "openrouter-clef-flash" || data.engine === "openrouter-luna" || data.engine === "laya" ? data.engine : "stockfish-18",
     openRouterKey: typeof data.openRouterKey === "string" ? data.openRouterKey.trim() : "",
     layaKey: typeof data.layaKey === "string" ? data.layaKey.trim() : "",
     depth: bounded(data.depth, 10, 1, 30), time: bounded(data.time, 0, 0, 15000), lines: bounded(data.lines, 10, 1, 10),
