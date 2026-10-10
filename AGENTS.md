@@ -5,20 +5,17 @@ Guidance for AI coding agents working in this repository. Read this before chang
 ## What this project is
 
 ChessBot is a **Chrome Manifest V3 extension** that adds a floating analysis panel to
-**Chess.com**. The panel uses **local Stockfish 18 WASM** analysis, **OpenRouter Jev/Clef/Luna/Liquid** or **Laya**
+**Chess.com**. The panel uses **local Stockfish 18 WASM** analysis, **OpenRouter** or **Laya**
 move decisions and can optionally play moves and start follow-up games automatically.
 
 - Version: `2.0.2` (see `package.json` and `public/manifest.json`).
-- Engines: **stockfish-18** runs locally; **openrouter-jev**, **openrouter-clef**,
-  **openrouter-clef-flash**, **openrouter-luna** and **openrouter-liquid** send FEN and legal moves to OpenRouter Decisions using
-  `~typesafe/jev-latest`, `cloudflare/clef`, `cloudflare/clef-flash`,
-  `openai/gpt-6-luna-decisions` and
-  `liquid/d1` with a shared
-  locally saved API key.
+- Engines: **stockfish-18** runs locally; **openrouter** sends FEN and legal moves to OpenRouter Decisions using
+  the model picked from the live decision-model catalogue (`src/openrouter-catalog.ts`:
+  keyless fetch, five-minute `chrome.storage.local` cache, MODEL dropdown under ENGINE);
   **laya** sends FEN and the first 50 legal moves to `laya-api.de/api/v1/systemone?wait=10`
   with `laya-latest` and a separately saved API key. Queued jobs are polled once per
   second and read from `result.answers`; forced single moves need no API request.
-  Jev, Clef, Luna 6, Liquid D1 and Laya never invoke Stockfish, analyze opponents, or use depth, variations,
+  OpenRouter and Laya never invoke Stockfish, analyze opponents, or use depth, variations,
   evaluation scores, average moves or mistake mode.
 - The overlay behaves the **same regardless of opponent type** (computer bot or human).
   Do **not** reintroduce route/path gating such as `/play/(computer|bots)` checks.
@@ -56,7 +53,7 @@ Three browser entry points are bundled into `dist/`:
 
 | Source | Output | Role |
 | --- | --- | --- |
-| `src/background.ts` | `background.js` | MV3 service worker. Routes document-scoped requests to Stockfish, Jev or Laya, with per-owner cancellation. |
+| `src/background.ts` | `background.js` | MV3 service worker. Routes document-scoped requests to Stockfish, OpenRouter or cancelable Laya decisions, with per-owner cancellation. |
 | `src/engine.ts` | `offscreen.js` | Runs inside the offscreen document. Owns the Stockfish worker, a job queue, per-owner cancellation, a 20s watchdog, depth/movetime limits, MultiPV, and UCI identity verification (`id name Stockfish 18`). |
 | `src/content.ts` | `content.js` | Isolated world. Calls `mount()`. |
 
@@ -67,6 +64,7 @@ Content/UI flow (isolated world):
 - `src/engine-client.ts` talks to `background` via `chrome.runtime.sendMessage`
   (`analyzePosition`, `stopAnalysis`, and an abortable `delay`).
 - `src/decision.ts` creates legal UCI move choices and validates hosted decisions.
+  `src/openrouter-catalog.ts` lists live decision models without credentials.
   `src/jev.ts` and `src/laya.ts` select their own endpoints and credentials.
   Laya logs job submissions and polls, with abortable waits and a 60-second timeout.
   Neither provider produces evaluation scores or principal variations.
@@ -143,7 +141,7 @@ These are enforced by `scripts/check-comments.ts` and `tsc`:
 - Runtime deps: `chess.js`, `react`, `react-dom` only. Do not add libraries without a
   clear need; this project intentionally has no UI framework beyond React and no CSS
   framework.
-- Keep Stockfish local and the extension free of remote executable code. Jev and
+- Keep Stockfish local and the extension free of remote executable code. OpenRouter and
   Laya use their hosted Decision APIs from the background service worker.
 - ChessBot application code is MIT (`LICENSE`); Stockfish remains GPL-3.0.
 

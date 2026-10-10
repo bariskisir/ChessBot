@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Chess } from "chess.js";
 import { analyzeLaya, buildLayaDecision, LAYA_BASE_URL, LAYA_MODEL, LAYA_URL } from "../src/laya";
-import { buildDecision } from "../src/jev";
+import { buildMoveDecision } from "../src/decision";
 import type { JevLog } from "../src/jev-log";
 
 const MANY_MOVES = "7k/8/1Q1Q1Q2/8/1Q1Q1Q2/8/8/K7 w - - 0 1";
@@ -26,7 +26,7 @@ function legalOptions(): void {
     ["7k/8/8/3pP3/8/8/8/K7 w - d6 0 1", "e5d6"],
     ["7k/P7/6K1/8/8/8/8/8 w - - 0 1", "a7a8n"],
   ] as const) assert.ok(buildLayaDecision(fen).questions.move.criteria[move]);
-  const complete = buildDecision(MANY_MOVES).questions.move.criteria;
+  const complete = buildMoveDecision(MANY_MOVES).questions.move.criteria;
   const body = buildLayaDecision(MANY_MOVES);
   assert.ok(Object.keys(complete).length > 50);
   assert.deepEqual(Object.entries(body.questions.move.criteria), Object.entries(complete).slice(0, 50));
@@ -36,7 +36,7 @@ function legalOptions(): void {
     /** A terminal position cannot be submitted as a choice question. */
     () => buildLayaDecision("7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"), /No legal moves/);
 }
-test("Laya submits laya-latest with the first 50 legal moves without limiting Jev", legalOptions);
+test("Laya submits laya-latest with the first 50 legal moves", legalOptions);
 
 /** Checks completed job responses, endpoint boundaries and sanitization of provider echoes. */
 async function transport(): Promise<void> {
@@ -130,7 +130,7 @@ async function failures(): Promise<void> {
     const invalid: typeof fetch = async () => Response.json(job("completed", result));
     await assert.rejects(analyzeLaya(fen, "fixture", signal, invalid), /Laya did not return a legal move/);
   }
-  const omitted = Object.keys(buildDecision(MANY_MOVES).questions.move.criteria)[50];
+  const omitted = Object.keys(buildMoveDecision(MANY_MOVES).questions.move.criteria)[50];
   assert.ok(omitted);
   /** Returns a legal move that was excluded by the provider's option limit. */
   const excluded: typeof fetch = async () => Response.json(job("completed", { answers: { move: { choice: omitted } } }));

@@ -56,6 +56,27 @@
 
   .bot-engine-note { color: $muted; font-size: $detail-size; overflow-wrap: anywhere; }
   .bot-provider-link { display: block; margin-bottom: 4px; color: $accent; font-size: $detail-size; }
+  .bot-catalog-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 4px 0;
+    color: $muted;
+    font-size: $detail-size;
+  }
+  .bot-catalog-retry {
+    padding: 2px 8px;
+    border: 1px solid $border;
+    border-radius: 4px;
+    background: transparent;
+    color: $accent;
+    font: inherit;
+    font-size: $detail-size;
+    cursor: pointer;
+
+    &:hover { border-color: $accent; }
+  }
   margin: 0;
   padding: 4px 0;
 

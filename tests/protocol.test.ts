@@ -20,7 +20,7 @@ function settingsValidation(): void {
   assert.equal(laya.engine, "laya");
   assert.equal(laya.layaKey, "laya-fixture");
   assert.equal(laya.openRouterKey, "jev-fixture");
-  assert.equal(normalizeSettings({ ...laya, engine: "openrouter-jev" }).layaKey, "laya-fixture");
+  assert.equal(normalizeSettings({ ...laya, engine: "openrouter" }).layaKey, "laya-fixture");
   assert.equal(normalizeSettings({ engine: "laya", layaKey: 12 }).layaKey, "");
   assert.deepEqual(normalizeSettings({ depth: Infinity, time: -2, lines: 99, autoPlayDelay: NaN, autoPlay: "true", engineType: "api" }), { ...DEFAULT_SETTINGS, lines: 10 });
   assert.equal(normalizeSettings({ lines: -3 }).lines, 1);

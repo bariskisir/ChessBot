@@ -1,7 +1,7 @@
 /** Defines the engine protocol and validates persisted preferences. */
 export interface PanelPosition { top: string; left?: string; right?: string }
 export interface Settings {
-  engine: "stockfish-18" | "openrouter-jev" | "openrouter-clef" | "openrouter-clef-flash" | "openrouter-luna" | "openrouter-liquid" | "laya"; openRouterKey: string; layaKey: string;
+  engine: "stockfish-18" | "openrouter" | "laya"; openrouterModel: string; openRouterKey: string; layaKey: string;
   depth: number; time: number; lines: number; autoPlay: boolean;
   autoPlayDelay: number; autoNewMatch: boolean; autoRematch: boolean; analyzeOpponent: boolean;
   averageMove: boolean; mistakeProbability: number; thinkingTime: number; panelPos: PanelPosition;
@@ -11,7 +11,7 @@ export interface Analysis { fen: string; bestMove: string; variations: Variation
 export interface EngineRequest { target: "background" | "engine"; action: "analyze" | "stop"; owner: string; fen: string; settings: Settings }
 export type EngineResponse = { result: Analysis } | { error: string };
 export const DEFAULT_SETTINGS: Settings = {
-  engine: "stockfish-18", openRouterKey: "", layaKey: "",
+  engine: "stockfish-18", openrouterModel: "", openRouterKey: "", layaKey: "",
   depth: 10, time: 0, lines: 10, autoPlay: true, autoPlayDelay: 300,
   autoNewMatch: true, autoRematch: false, analyzeOpponent: false, averageMove: true, mistakeProbability: 20,
   thinkingTime: 100, panelPos: { top: "10px", right: "10px" },
@@ -28,8 +28,10 @@ export function normalizeSettings(value: unknown): Settings {
   const panelPos: PanelPosition = { top: positionValue(data.panelPos?.top, "10px") };
   if (data.panelPos?.left !== undefined) panelPos.left = positionValue(data.panelPos.left, "10px");
   else panelPos.right = positionValue(data.panelPos?.right, "10px");
+  const savedEngine = typeof data.engine === "string" ? data.engine : "";
   return {
-    engine: data.engine === "openrouter-jev" || data.engine === "openrouter-clef" || data.engine === "openrouter-clef-flash" || data.engine === "openrouter-luna" || data.engine === "openrouter-liquid" || data.engine === "laya" ? data.engine : "stockfish-18",
+    engine: savedEngine === "openrouter" ? "openrouter" : savedEngine === "laya" ? "laya" : "stockfish-18",
+    openrouterModel: openrouterModelValue(data.openrouterModel),
     openRouterKey: typeof data.openRouterKey === "string" ? data.openRouterKey.trim() : "",
     layaKey: typeof data.layaKey === "string" ? data.layaKey.trim() : "",
     depth: bounded(data.depth, 10, 1, 30), time: bounded(data.time, 0, 0, 15000), lines: bounded(data.lines, 10, 1, 10),
@@ -40,6 +42,13 @@ export function normalizeSettings(value: unknown): Settings {
     mistakeProbability: bounded(data.mistakeProbability, 20, 0, 100),
     thinkingTime: bounded(data.thinkingTime, 100, 1, 100), panelPos,
   };
+}
+
+/** Accepts only catalogue-shaped model slugs so junk cannot persist. */
+function openrouterModelValue(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const id = value.trim();
+  return id.length > 0 && id.length <= 200 && /^[A-Za-z0-9~_][A-Za-z0-9~_\-./:+]*$/.test(id) ? id : "";
 }
 
 /** Accepts only finite pixel positions from persisted panel settings. */

@@ -3,10 +3,13 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } fr
 import { Controller, type PanelState } from "./controller";
 import { DEFAULT_SETTINGS, type Settings, type PanelPosition } from "./shared";
 import icon from "../public/icons/icon.svg";
-import { isOpenRouterEngine, OPENROUTER_MODELS } from "./jev";
+import { isOpenRouterEngine } from "./jev";
+import { loadOpenRouterModels, type OpenRouterModel } from "./openrouter-catalog";
 import { JevLogs } from "./jev-logs";
 
 interface SettingProps { settings: Settings; change: (update: Partial<Settings>) => void }
+
+interface CatalogProps { models: OpenRouterModel[]; loading: boolean; error: string | null; retry: () => void }
 
 /** Carries continuous panel coordinates to SCSS without presentational declarations. */
 interface PanelVars extends CSSProperties { "--bot-top"?: string | undefined; "--bot-right"?: string | undefined; "--bot-left"?: string | undefined }
@@ -21,6 +24,32 @@ const STATUS_TONES: Record<string, string> = { "#9ca3af": "muted", "#10b981": "s
 function parseEngineOption(value: string): Settings["engine"] {
   if (value === "laya" || isOpenRouterEngine(value)) return value;
   return "stockfish-18";
+}
+
+/** Shows the live OpenRouter catalogue with the key field while the remote engine is selected. */
+function OpenRouterSettings({ settings, change, models, loading, error, retry }: SettingProps & CatalogProps) {
+  if (!isOpenRouterEngine(settings.engine)) return null;
+  const selected = settings.openrouterModel;
+  const known = models.some(
+    /** Checks whether the persisted choice is still in the live catalogue. */
+    (model) => model.id === selected);
+  return <div className="bot-setting-item">
+    <label htmlFor="bot-openrouter-model">MODEL</label>
+    <select id="bot-openrouter-model" value={selected} disabled={loading && models.length === 0} onChange={
+      /** Persists the chosen catalogue model without starting a search. */
+      (event) => change({ openrouterModel: event.target.value })}>
+      <option value="">{loading && models.length === 0 ? "Loading models…" : "Select model…"}</option>
+      {!known && selected ? <option value={selected}>{selected}</option> : null}
+      {models.map(
+        /** Uses the catalogue slug as the persisted value. */
+        (model) => <option key={model.id} value={model.id} title={model.id}>{model.name}</option>)}
+    </select>
+    {error && models.length === 0 ? <p className="bot-catalog-error" role="alert"><span>{error}</span><button type="button" className="bot-catalog-retry" onClick={retry}>Retry</button></p> : null}
+    <label htmlFor="bot-openrouter-key">OPENROUTER API KEY</label><input id="bot-openrouter-key" type="password" autoComplete="off" spellCheck={false} value={settings.openRouterKey} onChange={
+      /** Saves the key locally and cancels work using the old credential. */
+      (event) => change({ openRouterKey: event.target.value })} />
+    <p className="bot-engine-note">{selected || "No model selected"}. Key saved on this device. FEN and legal moves are sent to OpenRouter.</p>
+  </div>;
 }
 
 /** Renders a compact labeled checkbox without changing its saved behavior. */
@@ -76,6 +105,10 @@ export function App() {
   const [advanced, setAdvanced] = useState(false);
   const [frame, setFrame] = useState<HTMLDivElement | null>(null);
   const [position, setPosition] = useState<PanelPosition | null>(null);
+  const [models, setModels] = useState<OpenRouterModel[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogRefresh, setCatalogRefresh] = useState(0);
   const controller = useRef<Controller | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number } | null>(null);
@@ -87,6 +120,31 @@ export function App() {
     /** Removes tracking, searches, and queued board clicks. */
     return () => instance.dispose();
   }, []);
+
+  /** Fills the remote model dropdown on startup without blocking local analysis. */
+  useEffect(() => {
+    let cancelled = false;
+    setCatalogLoading(true);
+    loadOpenRouterModels()
+      .then(
+        /** Publishes the catalogue while this panel is still mounted. */
+        (result) => { if (!cancelled) { setModels(result.models); setCatalogError(null); } })
+      .catch(
+        /** Keeps local engines usable when the catalogue cannot load. */
+        (error: unknown) => { if (!cancelled) setCatalogError(error instanceof Error ? error.message : String(error)); })
+      .finally(
+        /** Releases the loading state even when the catalogue failed. */
+        () => { if (!cancelled) setCatalogLoading(false); });
+    /** Prevents a late catalogue reply from updating an unmounted panel. */
+    return () => { cancelled = true; };
+  }, [catalogRefresh]);
+
+  /** Reloads the remote model catalogue on demand. */
+  function retryCatalog(): void {
+    setCatalogRefresh(
+      /** Bumps the loader key so the catalogue effect runs again. */
+      (count) => count + 1);
+  }
 
   /** Persists a setting through the behavior controller. */
   function change(update: Partial<Settings>): void { controller.current?.updateSettings(update); }
@@ -136,14 +194,9 @@ export function App() {
       <div className="bot-setting-item"><label htmlFor="bot-engine">ENGINE</label><select id="bot-engine" value={state.settings.engine} onChange={
         /** Switches providers and cancels any pending decision. */
         (event) => change({ engine: parseEngineOption(event.target.value) })}>
-        <option value="stockfish-18">stockfish-18</option><option value="openrouter-jev">openrouter-jev</option><option value="openrouter-clef">openrouter-clef</option><option value="openrouter-clef-flash">openrouter-clef-flash</option><option value="openrouter-luna">openrouter-luna</option><option value="openrouter-liquid">openrouter-liquid</option><option value="laya">laya</option>
+        <option value="stockfish-18">stockfish-18</option><option value="openrouter">openrouter</option><option value="laya">laya</option>
       </select></div>
-      {isOpenRouterEngine(state.settings.engine) && <div className="bot-setting-item">
-        <label htmlFor="bot-openrouter-key">OPENROUTER API KEY</label><input id="bot-openrouter-key" type="password" autoComplete="off" spellCheck={false} value={state.settings.openRouterKey} onChange={
-          /** Saves the key locally and cancels work using the old credential. */
-          (event) => change({ openRouterKey: event.target.value })} />
-        <p className="bot-engine-note">{OPENROUTER_MODELS[state.settings.engine]}. Key saved on this device. FEN and legal moves are sent to OpenRouter.</p>
-      </div>}
+      <OpenRouterSettings {...controls} models={models} loading={catalogLoading} error={catalogError} retry={retryCatalog} />
       {state.settings.engine === "laya" && <div className="bot-setting-item">
         <label htmlFor="bot-laya-key">LAYA API KEY</label><a className="bot-provider-link" href="https://laya-api.de" target="_blank" rel="noopener noreferrer">laya-api.de</a>
         <input id="bot-laya-key" type="password" autoComplete="off" spellCheck={false} value={state.settings.layaKey} onChange={

@@ -150,11 +150,12 @@ const context = await chromium.launchPersistentContext(profile, { channel: "chro
 const errors: string[] = [];
 
 /** Verifies direct decisions and completed Laya jobs with credential-safe history and STOP. */
-async function verifyDecisions(page: Page, engine: "openrouter-jev" | "laya"): Promise<void> {
-  const provider = engine === "laya" ? "Laya" : "Jev";
+async function verifyDecisions(page: Page, engine: "openrouter" | "laya"): Promise<void> {
+  const provider = engine === "laya" ? "Laya" : "OpenRouter";
   const keyLabel = engine === "laya" ? "LAYA API KEY" : "OPENROUTER API KEY";
   const key = engine === "laya" ? "fixture-laya-key" : "fixture-jev-key";
-  const logLabel = engine === "laya" ? "laya-logs" : "jev-logs";
+  const logLabel = engine === "laya" ? "laya-logs" : "openrouter-logs";
+  const model = "~typesafe/jev-latest";
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker");
   await worker.evaluate(
     /** Installs a delayed decision fixture inside the service worker, preventing real API calls. */
@@ -177,6 +178,21 @@ async function verifyDecisions(page: Page, engine: "openrouter-jev" | "laya"): P
       };
     }, { engine, key });
   await page.getByLabel("ENGINE", { exact: true }).selectOption(engine);
+  if (engine === "openrouter") {
+    await page.route("https://openrouter.ai/api/frontend/v1/catalog/models",
+      /** Serves a fixed decision-model catalogue without contacting OpenRouter. */
+      (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ data: [
+        { slug: model, name: "Jev", output_modalities: ["decisions"] },
+        { slug: "example/other-model", name: "Other", output_modalities: ["decisions"] },
+        { slug: "example/chat-model", name: "Chat", output_modalities: ["text"] },
+      ] }) }));
+    await page.reload();
+    await expect(page.getByRole("button", { name: "START", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Toggle Settings" }).click();
+    await page.getByLabel("ENGINE", { exact: true }).selectOption(engine);
+    await expect(page.getByLabel("MODEL", { exact: true })).toBeVisible();
+    await page.getByLabel("MODEL", { exact: true }).selectOption(model);
+  }
   for (const label of ["DEPTH", "VARIATIONS", "AVERAGE MOVE", "MISTAKE", "ANALYZE OPPONENT"]) await expect(page.getByLabel(label, { exact: true })).toHaveCount(0);
   await expect(page.locator("#bot-eval-text")).toHaveCount(0);
   if (engine === "laya") {
@@ -188,7 +204,7 @@ async function verifyDecisions(page: Page, engine: "openrouter-jev" | "laya"): P
     assert.ok(linkBounds && inputBounds && linkBounds.y + linkBounds.height <= inputBounds.y);
   }
   await page.getByRole("button", { name: "START", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText((provider === "Jev" ? "OpenRouter" : "Laya") + " API key");
+  await expect(page.getByRole("status")).toContainText(provider + " API key");
   await page.getByRole("button", { name: "STOP", exact: true }).click();
   await page.getByLabel(keyLabel, { exact: true }).fill(key);
   await page.getByLabel("AUTO PLAY", { exact: true }).check();
@@ -276,6 +292,7 @@ async function verifyDecisions(page: Page, engine: "openrouter-jev" | "laya"): P
   await expect(page.getByRole("button", { name: "START", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Toggle Settings" }).click();
   await expect(page.getByLabel("ENGINE", { exact: true })).toHaveValue(engine);
+  if (engine === "openrouter") await expect(page.getByLabel("MODEL", { exact: true })).toHaveValue(model);
   await expect(page.getByLabel(keyLabel, { exact: true })).toHaveValue(key);
   await page.getByRole("button", { name: logLabel, exact: true }).click();
   await expect(logs.getByLabel("Request count")).toHaveText("2/2");
@@ -410,7 +427,7 @@ try {
   await expect(page.getByLabel("MISTAKE", { exact: true })).toHaveAttribute("max", "100");
   await expect(page.getByLabel("VARIATIONS", { exact: true })).toHaveAttribute("max", "10");
   await expect(page.getByLabel("DEPTH", { exact: true })).toHaveValue("6");
-  await verifyDecisions(page, "openrouter-jev");
+  await verifyDecisions(page, "openrouter");
   await verifyDecisions(page, "laya");
   await verifyLayaPolling(page);
   await page.getByRole("button", { name: "START", exact: true }).click();
@@ -500,11 +517,11 @@ try {
   await page.setViewportSize({ width: 390, height: 760 });
   const compact = await page.locator("#bot-overlay-panel").boundingBox();
   assert.ok(compact && compact.x >= 0 && compact.x + compact.width <= 390);
-  await page.getByRole("button", { name: "jev-logs", exact: true }).click();
-  const compactLogs = await page.getByRole("complementary", { name: "Jev logs" }).boundingBox();
+  await page.getByRole("button", { name: "stockfish-logs", exact: true }).click();
+  const compactLogs = await page.getByRole("complementary", { name: "Stockfish logs" }).boundingBox();
   const compactMain = await page.locator("#bot-overlay-panel").boundingBox();
   assert.ok(compactLogs && compactMain && compactLogs.x >= 0 && compactMain.x + compactMain.width <= 390);
   assert.ok(Math.abs(compactLogs.width - compactMain.width * 1.25) < 1 && Math.abs(compactLogs.height - Math.min(compact.height * 1.25, 760 - compactLogs.y - 12)) < 1);
   assert.deepEqual(errors, []);
-  console.log("Passed: panel controls, Jev decisions, Laya jobs and canceled polling, masked logs, best move, eval bar, highlights, actual auto play, STOP cancellation, rematch, new-match precedence, setting migration, saved dragging, offline engine, and tab isolation.");
+  console.log("Passed: panel controls, OpenRouter decisions, Laya jobs and canceled polling, masked logs, best move, eval bar, highlights, actual auto play, STOP cancellation, rematch, new-match precedence, setting migration, saved dragging, offline engine, and tab isolation.");
 } finally { await context.close(); }

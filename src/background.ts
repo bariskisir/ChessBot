@@ -50,10 +50,10 @@ async function route(request: EngineRequest, sender: chrome.runtime.MessageSende
           /** A closed tab has no viewer to notify. */
           () => {}));
     }
-    const provider = settings.engine === "laya" ? "Laya" : settings.engine === "stockfish-18" ? "Stockfish" : openRouterName(settings.engine);
+    const provider = settings.engine === "laya" ? "Laya" : settings.engine === "stockfish-18" ? "Stockfish" : openRouterName(settings.openrouterModel);
     try { return { result: await (settings.engine === "laya"
       ? analyzeLaya(request.fen, settings.layaKey, controller.signal, fetch, publish)
-      : analyzeOpenRouter(settings.engine, request.fen, settings.openRouterKey, controller.signal, fetch, publish)) }; }
+      : analyzeOpenRouter(settings.openrouterModel, request.fen, settings.openRouterKey, controller.signal, fetch, publish)) }; }
     catch (error) { return { error: controller.signal.aborted ? `${provider} analysis canceled or timed out.` : error instanceof Error ? error.message : `${provider} request failed.` }; }
     finally { clearTimeout(timer); if (pending.get(owner) === controller) pending.delete(owner); }
   }
