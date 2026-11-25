@@ -2,6 +2,7 @@
 import { Chess } from "chess.js";
 import { delay } from "../engine-client";
 import type { MistakeType } from "../mistake-mode";
+import { replayHistory } from "./chesscom-history";
 import { samePosition, serializePlacement } from "./position";
 
 /** Finds the current board after site navigation or board replacement. */
@@ -33,7 +34,7 @@ function expandPlacement(placement: string): string[] {
 /** Reads the side to move from the move list, falling back to the site's turn markers. */
 function readTurn(board: HTMLElement): "w" | "b" {
   const moveList = document.querySelector("wc-simple-move-list");
-  const selected = moveList?.querySelector(".node.selected");
+  const selected = moveList?.querySelector(".node.selected, .node .selected")?.closest(".node");
   if (selected) return selected.classList.contains("white-move") ? "b" : "w";
   const rows = moveList ? [...moveList.querySelectorAll(".main-line-row")] : [];
   if (rows.length) {
@@ -81,24 +82,44 @@ function inferFen(cells: Map<string, string>, board: HTMLElement): string | null
   try { return new Chess(fen).fen(); } catch { return null; }
 }
 
+/** Figurine icon classes name the piece; their letters stand in for the missing text. */
+const FIGURINES: Readonly<Record<string, string>> = { king: "K", queen: "Q", rook: "R", bishop: "B", knight: "N", pawn: "" };
+
+/** Reads a move node in display order so figurines land where the site drew them. */
+function nodeText(node: Element): string {
+  let text = "";
+  /** Collects text and figurine letters depth-first without reading inside an icon. */
+  const visit = (current: Node): void => {
+    if (current.nodeType === Node.TEXT_NODE) { text += current.textContent ?? ""; return; }
+    if (!(current instanceof Element)) return;
+    const attribute = current.getAttribute("data-figurine");
+    if (attribute !== null) { text += attribute; return; }
+    const icon = /\b(king|queen|rook|bishop|knight|pawn)-(?:white|black)\b/.exec(current.getAttribute("class") ?? "")?.[1];
+    if (icon) { text += FIGURINES[icon] ?? ""; return; }
+    for (const child of current.childNodes) visit(child);
+  };
+  visit(node);
+  return text;
+}
+
+let replayCache: { key: string; fen: string | null } | null = null;
+
 /** Waits for visible pieces and recorded moves to agree before exposing a playable position. */
 export function readPosition(): string | null {
   const board = getBoard();
   if (!board) return null;
   const placement = readPlacement(board);
-  const chess = new Chess();
   const nodes = document.querySelectorAll("wc-simple-move-list .node");
-  try {
-    for (const node of nodes) {
-      const figurine = node.querySelector("[data-figurine]")?.getAttribute("data-figurine") ?? "";
-      const san = (figurine + (node.textContent ?? "")).replace(/[!?]/g, "").trim();
-      if (san) chess.move(san);
-      if (node.classList.contains("selected")) break;
-    }
-  } catch { return null; }
-  if (chess.fen().split(" ")[0] === placement) return chess.fen();
-  if (nodes.length) return null;
-  return inferFen(readCells(board), board);
+  if (!nodes.length) return inferFen(readCells(board), board);
+  const texts: string[] = [];
+  for (const node of nodes) {
+    texts.push(nodeText(node));
+    if (node.matches(".selected") || node.querySelector(".selected")) break;
+  }
+  // Polling rereads the same list many times per move; replay only when it changes.
+  const key = [placement, ...texts].join("\n");
+  if (replayCache?.key !== key) replayCache = { key, fen: replayHistory(texts, placement) };
+  return replayCache.fen;
 }
 
 /** Removes suggestion squares while leaving the site's own highlights untouched. */
